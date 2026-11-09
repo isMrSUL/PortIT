@@ -1,0 +1,34 @@
+# build output
+bin/
+obj/
+release/
+dist/
+*.user
+.vs/
+
+# Python
+__pycache__/
+*.pyc
+app/Engine/python/
+
+# local NuGet setup (each PC has its own)
+NuGet.Config
+
+# backups and work files
+*.bak*
+*.after_*
+
+# never commit game files or proprietary DLLs
+oo2core*.dll
+*.pac
+*.cak
+*.mcd
+*.tex
+*.dds
+*.utoc
+*.ucas
+*.uasset
+*.uexp
+*.pak
+*.iso
+*.svrmod
