@@ -46,12 +46,8 @@ internal static class Render
         return 0;
     }
 
-    public static int Window(string outPath, double seconds, int w, int h)
+    static void Pump(double seconds)
     {
-        AppBuilder.Configure<App>().UseSkia().WithInterFont()
-            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
-        var win = new MainWindow { Width = w, Height = h };
-        win.Show();
         var sw = Stopwatch.StartNew();
         while (sw.Elapsed.TotalSeconds < seconds)
         {
@@ -59,9 +55,43 @@ internal static class Render
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             Thread.Sleep(30);
         }
+    }
+
+    /// <summary>the main window after `seconds` (the list loads by itself); pick: then a wrestler (name contains it)
+    /// chosen and `after` more seconds for its meshes and preview - the user guide's screenshots</summary>
+    public static int Window(string outPath, double seconds, int w, int h, string? pick = null, double after = 0)
+    {
+        AppBuilder.Configure<App>().UseSkia().WithInterFont()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+        var win = new MainWindow { Width = w, Height = h };
+        win.Show();
+        Pump(seconds);
+        if (pick != null)
+        {
+            win.ShotPick(pick);
+            Pump(after);
+        }
         Dispatcher.UIThread.RunJobs();
         AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         var frame = win.CaptureRenderedFrame();
+        if (frame == null) return 1;
+        frame.Save(outPath);
+        return 0;
+    }
+
+    /// <summary>the "Install as attire" window for the guide: stars = the engine's 'stars' answer (a json file),
+    /// star = the superstar shown</summary>
+    public static int Attire(string outPath, string starsJson, string star)
+    {
+        AppBuilder.Configure<App>().UseSkia().WithInterFont()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(starsJson));
+        var stars = StarSlots.From(doc.RootElement);
+        var dlg = new AttireDialog(stars, "ADAM COLE", 394) { Height = 640 };
+        dlg.Show();
+        dlg.ShotPick(star);
+        Pump(1.5);
+        var frame = dlg.CaptureRenderedFrame();
         if (frame == null) return 1;
         frame.Save(outPath);
         return 0;

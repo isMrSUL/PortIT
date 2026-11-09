@@ -272,6 +272,7 @@ def render_source(src, out, size=(1000, 760), lod=1, tex_side=512, title='the 2K
                 zb[py, px] = zz
                 img[py, px] = np.clip(rgb * sh[:, None], 0, 255)
     im = Image.fromarray(img.astype(np.uint8))
-    ImageDraw.Draw(im).text((10, 6), title + '  -  front / side', fill=(150, 165, 190))
+    if title:     # (PortIT shows its own caption under the picture: none drawn inside it)
+        ImageDraw.Draw(im).text((10, 6), title + '  -  front / side', fill=(150, 165, 190))
     im.save(out)
     return out

@@ -64,13 +64,22 @@ stock SvR 2011 skeleton) that the model builder needs; they contain no models, t
 `app/Engine/k26/ddshash.exe` and `app/Engine/svr/bpe.exe` are built from `ddshash.zig` and `bpe.zig` in this
 repository with [Zig](https://ziglang.org/) 0.13 (MIT); `ddshash` uses Zig's standard library XXH3.
 
-## Needed to run the engine (not in this repository)
+## The big-model DLL (`bigmodel_dll`, the optional `xinput1_4.dll`)
+
+SUL's own code (same license as PortIT). It is built with
+[MinHook](https://github.com/TsudaKageyu/minhook) 1.3.4 (`bigmodel_dll/minhook`), BSD 2-Clause License,
+Copyright (C) 2009-2017 Tsuda Kageyu; its full license is in `bigmodel_dll/minhook/LICENSE.txt`.
+
+## Bundled with the release download (not in this repository)
 
 | Component | License |
 |---|---|
-| [Python 3.12](https://www.python.org/) | Python Software Foundation License |
+| [.NET runtime](https://github.com/dotnet/runtime) | MIT |
+| [Python 3.12](https://www.python.org/) (Windows embeddable package) | Python Software Foundation License |
 | [NumPy](https://numpy.org/) | BSD 3-Clause |
 | [Pillow](https://python-pillow.org/) | MIT-CMU (HPND) |
+
+To run PortIT from source you need Python 3.12 with NumPy and Pillow yourself.
 
 ## Not included
 

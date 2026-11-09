@@ -97,6 +97,13 @@ public sealed class AttireDialog : Window
         Refresh();
     }
 
+    /// <summary>(screenshots: Render.Attire) the superstar whose name is `name`</summary>
+    internal void ShotPick(string name)
+    {
+        foreach (var o in star.ItemsSource!)
+            if (o is StarSlots s && s.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) { star.SelectedItem = s; break; }
+    }
+
     void Refresh()
     {
         slots.Children.Clear();
@@ -138,6 +145,8 @@ public sealed class AttireDialog : Window
         {
             int a = int.Parse(slot);
             ok = s.Attires.Contains(a) ? $"Replaces the game's attire {a}." : $"The superstar has no attire {a} now: this adds it as attire {a}.";
+            if (s.Gear)     // (why "A new attire" is off for them - users asked themselves)
+                ok += $"\n{s.Name} wears entrance gear (a coat / hat / shirt for the entrance): a new attire never loads for them, so only their own attires can be replaced.";
             if (s.Mods.TryGetValue(a, out var other))
                 warn.Add($"Attire {a} is already used by \"{other}\" (installed): of two mods on one attire the first folder (A-Z) keeps it" +
                          (s.Gear ? " - switch one of them off." : next > 0 ? $"; attire {next} is free." : "."));

@@ -84,6 +84,13 @@ public partial class MainWindow : Window
         Opened += async (_, _) => { if (Directory.Exists(SourceBox.Text)) await LoadList(); };
     }
 
+    /// <summary>(screenshots: Render.Window) pick the first listed wrestler whose name contains `name`</summary>
+    internal void ShotPick(string name)
+    {
+        var it = shown.FirstOrDefault(x => x.Name.Contains(name, StringComparison.OrdinalIgnoreCase));
+        if (it != null) WrestlerList.SelectedItem = it;
+    }
+
     // ------------------------------------------------------------------ source
     void SetSource(bool aew)
     {

@@ -156,14 +156,21 @@ def source_preview(req, src):
     if req.get('source') == 'aew':
         view = aew_view(view)
     os.makedirs(PREVIEWS, exist_ok=True)
-    for f in os.listdir(PREVIEWS):          # (old previews: only the last few kept)
-        p = os.path.join(PREVIEWS, f)
-        if time.time() - os.path.getmtime(p) > 3600:
-            os.remove(p)
+    # (old previews: only the last hour's kept - files only: the folder also holds aew_tex\, the AEW preview's
+    #  textures, and os.remove on it failed every inspect once it was an hour old, 2026-11-09; a tidy-up must never
+    #  stop a preview)
+    for root in (PREVIEWS, os.path.join(PREVIEWS, 'aew_tex')):
+        for f in (os.listdir(root) if os.path.isdir(root) else []):
+            p = os.path.join(root, f)
+            try:
+                if os.path.isfile(p) and time.time() - os.path.getmtime(p) > 3600:
+                    os.remove(p)
+            except OSError:
+                pass
     out = os.path.join(PREVIEWS, '%s_%s.png' % (re.sub(r'[^A-Za-z0-9_]+', '_', os.path.basename(str(req['id'])))[-60:],
                                                time.strftime('%H%M%S')))
     try:
-        return preview.render_source(view, out, title='the %s model, before porting' % ('AEW' if req.get('source') == 'aew' else '2K'))
+        return preview.render_source(view, out, title='')
     except Exception as e:   # noqa: BLE001  (a preview must never stop reading the meshes)
         log('preview: %s' % e)
         return None
@@ -232,7 +239,7 @@ def manifest(mod_id, name, base, female, pac=None):
     """the superstar mod's manifest.txt (docs/SVRMOD_FORMAT.md 3.1); pac: the built ch.pac - over the old 192-page
     window it says needs=2.1.6 (the big-model memory), as the Mod Maker and its converters write it"""
     lines = ['type=superstar', 'id=%s' % mod_id, 'name=%s' % name[:31], 'short=%s' % name[:31], 'base=%s' % base,
-             'author=', 'version=1.0', 'made_with=PortIT 0.1', 'ratings=80,80,80,80,80,80,80', 'call=48']
+             'author=', 'version=1.0', 'made_with=PortIT 1.0.0', 'ratings=80,80,80,80,80,80,80', 'call=48']
     if pac:
         try:
             import model_budget

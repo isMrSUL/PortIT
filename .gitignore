@@ -32,3 +32,6 @@ oo2core*.dll
 *.pak
 *.iso
 *.svrmod
+
+# the big-model DLL build output
+bigmodel_dll/out/
