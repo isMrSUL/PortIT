@@ -31,8 +31,11 @@ def bpe_decode(data):
             a, b = os.path.join(d, 'bpe'), os.path.join(d, 'raw')
             with open(a, 'wb') as f:
                 f.write(bytes(data[:16 + packed]))
-            r = subprocess.run([_BPE_EXE, '-d', a, b], capture_output=True)
-            if r.returncode == 0 and os.path.isfile(b):
+            try:      # (blocked by antivirus / Smart App Control: the Python decoder below)
+                r = subprocess.run([_BPE_EXE, '-d', a, b], capture_output=True)
+            except OSError:
+                r = None
+            if r is not None and r.returncode == 0 and os.path.isfile(b):
                 with open(b, 'rb') as f:
                     out = f.read()
                 if len(out) == unpacked:
@@ -125,8 +128,11 @@ def bpe_encode(raw, compress=False):
             a, b = os.path.join(d, 'raw'), os.path.join(d, 'bpe')
             with open(a, 'wb') as f:
                 f.write(raw)
-            r = subprocess.run([_BPE_EXE, a, b], capture_output=True)
-            if r.returncode == 0 and os.path.isfile(b):
+            try:      # (blocked by antivirus / Smart App Control: the Python encoder below)
+                r = subprocess.run([_BPE_EXE, a, b], capture_output=True)
+            except OSError:
+                r = None
+            if r is not None and r.returncode == 0 and os.path.isfile(b):
                 with open(b, 'rb') as f:
                     return f.read()
     out = bytearray()

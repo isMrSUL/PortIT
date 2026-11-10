@@ -15,6 +15,7 @@ internal static class Program
                                  args.Length > 3 ? args[3] : null,
                                  args.Length > 4 ? double.Parse(args[4], System.Globalization.CultureInfo.InvariantCulture) : 20);
         if (args.Length == 4 && args[0] == "--shot-attire") return Render.Attire(args[1], args[2], args[3]);
+        Core.Unblock.OwnFiles();     // (the downloaded zip's "from the internet" mark off PortIT's own files)
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         return 0;
     }

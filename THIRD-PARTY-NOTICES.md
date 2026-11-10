@@ -61,8 +61,9 @@ stock SvR 2011 skeleton) that the model builder needs; they contain no models, t
 
 ## Native helpers
 
-`app/Engine/k26/ddshash.exe` and `app/Engine/svr/bpe.exe` are built from `ddshash.zig` and `bpe.zig` in this
-repository with [Zig](https://ziglang.org/) 0.13 (MIT); `ddshash` uses Zig's standard library XXH3.
+`app/Engine/svr/bpe.exe` is built from `bpe.zig` in this repository with [Zig](https://ziglang.org/) 0.13 (MIT).
+`app/Engine/k26/xxh3.py` follows Zig's standard library XXH3 (`lib/std/hash/xxhash.zig`, MIT) and uses its default
+secret; `ddshash.zig` (the helper it replaced in 1.0.1) is kept for reference.
 
 ## The big-model DLL (`bigmodel_dll`, the optional `xinput1_4.dll`)
 

@@ -661,7 +661,6 @@ def pac_texture_hashes(pac, work):
     """{'color': hash16, 'normal': hash16} of the pac's first attire (XXH3-64 of the DDS top level, as the port)"""
     import ch_tool
     import svrfmt
-    tool = os.path.join(HERE, 'ddshash.exe')
     _, groups = ch_tool.epk8_read(open(pac, 'rb').read())
     out = {}
     for _, data in svrfmt.pach_read(groups[0][1][0][1]):
@@ -679,10 +678,9 @@ def pac_texture_hashes(pac, work):
             tmp = os.path.join(work, '_pac_%s.dds' % nm)
             open(tmp, 'wb').write(d)
             top = ((w + 3) // 4) * ((hh + 3) // 4) * 16
-            r = subprocess.run([tool, tmp, '128', str(top)], capture_output=True, text=True)
-            if r.returncode or len(r.stdout.strip()) != 16:
-                raise RuntimeError('ddshash failed: ' + (r.stderr or r.stdout))
-            out[nm] = r.stdout.strip()
+            # (PortIT 1.0.1: in Python - users' antivirus / Smart App Control blocked ddshash.exe: "ddshash failed: ")
+            import xxh3
+            out[nm] = xxh3.file_hash(tmp, 128, top)
     return out
 
 

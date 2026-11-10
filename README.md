@@ -85,7 +85,7 @@ with `bigmodel_dll/build.sh` ([Zig](https://ziglang.org/) 0.13).
 | `app/Engine/k26/` | the full-detail pipeline: face fit, weights, texture sheets and packs, checks; `aew_bridge.py` feeds AEW into it |
 | `app/Engine/portit/` | source readers (2K, AEW), preview, attires, the classic converter |
 | `app/Engine/readers/` | file readers: 2K `.mcd`, UE4 IoStore / zen packages, PS4 textures |
-| `app/Engine/svr/` | the SvR 2011 model builder and file formats; `bpe.zig` / `ddshash.zig` are the sources of the two small native helpers |
+| `app/Engine/svr/` | the SvR 2011 model builder and file formats; `bpe.zig` is the source of the small native compressor (with a Python fallback) |
 | `app/Engine/cake/` | the 2K26 archive reader (BakeIT.Core) and the libraries it uses |
 | `bigmodel_dll/` | the source of the optional big-model DLL (`xinput1_4.dll`) for full-detail wrestlers |
 | `docs/` | the [user guide](docs/USER_GUIDE.md) and its pictures |

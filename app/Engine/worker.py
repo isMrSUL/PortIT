@@ -239,7 +239,7 @@ def manifest(mod_id, name, base, female, pac=None):
     """the superstar mod's manifest.txt (docs/SVRMOD_FORMAT.md 3.1); pac: the built ch.pac - over the old 192-page
     window it says needs=2.1.6 (the big-model memory), as the Mod Maker and its converters write it"""
     lines = ['type=superstar', 'id=%s' % mod_id, 'name=%s' % name[:31], 'short=%s' % name[:31], 'base=%s' % base,
-             'author=', 'version=1.0', 'made_with=PortIT 1.0.0', 'ratings=80,80,80,80,80,80,80', 'call=48']
+             'author=', 'version=1.0', 'made_with=PortIT 1.0.1', 'ratings=80,80,80,80,80,80,80', 'call=48']
     if pac:
         try:
             import model_budget
@@ -453,9 +453,32 @@ def cmd_install_attire(req):
     return attires.install(req, lambda s, g, _id: copy_texture_pack(s, g, os.path.basename(os.path.normpath(src))))
 
 
+def check_runtime():
+    """NumPy and Pillow load, or a message that says what to do (PortIT 1.0.1: on some PCs Windows or the antivirus
+    blocked or removed NumPy's DLLs - users got NumPy's long 'Importing the numpy C-extensions failed' text)"""
+    try:
+        import numpy  # noqa: F401
+        from PIL import Image  # noqa: F401
+    except ImportError as e:
+        why = [ln.strip() for ln in str(e).splitlines() if ln.strip()]
+        original = next((ln for ln in reversed(why) if 'Original error' in ln or 'DLL load failed' in ln), why[-1] if why else '')
+        raise RuntimeError(
+            'PortIT\'s Python could not load NumPy / Pillow - Windows or an antivirus blocked or removed one of its '
+            'files.\n'
+            '1. Close PortIT. Right-click the PortIT zip you downloaded > Properties > tick "Unblock" > OK, then unzip it '
+            'again (with Windows\' own "Extract All") into a new folder, and run PortIT.exe from there.\n'
+            '2. If it still fails: your antivirus may have quarantined a file in PortIT\\Engine\\python (often '
+            'numpy.libs\\libscipy_openblas64_...dll). Restore it and add the PortIT folder as an exception.\n'
+            '3. Windows 11 "Smart App Control" blocks unsigned files: see the user guide, "When something goes wrong".\n'
+            'Python: %s\nError: %s' % (sys.executable, original)) from None
+
+
 def main(inp, outp):
     req = json.load(open(inp, encoding='utf-8'))
     try:
+        check_runtime()
+        import dds_compat      # (sRGB DDS formats such as DXGI 78 opened as their plain twins - Pillow refuses them)
+        dds_compat.install()
         res = {'list': cmd_list, 'inspect': cmd_inspect, 'port': cmd_port, 'preview': cmd_preview,
                'source_preview': cmd_source_preview, 'export_svrmod': cmd_export_svrmod,
                'install': cmd_install, 'stars': cmd_stars, 'install_attire': cmd_install_attire}[req['command']](req)
