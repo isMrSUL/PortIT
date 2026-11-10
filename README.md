@@ -5,7 +5,7 @@
 <h1 align="center">PortIT</h1>
 
 <p align="center">
-  <b>Port wrestlers from WWE 2K26 and AEW Fight Forever into WWE SmackDown vs. Raw 2011 (PC port) —<br>
+  <b>Port wrestlers from WWE 2K19 – 2K26 and AEW Fight Forever into WWE SmackDown vs. Raw 2011 (PC port) —<br>
   full detail, HD textures, working face animation.</b>
 </p>
 
@@ -21,10 +21,11 @@
 
 1. Download **`PortIT-<version>-win-x64.zip`** from [Releases](../../releases/latest), unzip it anywhere and run
    **`PortIT.exe`** (no install: .NET and Python are inside).
-2. For full-detail wrestlers, also download **`PortIT-BigModel-DLL-<version>.zip`** and put its `xinput1_4.dll` next to
-   `svr2011.exe` ([how and why](docs/USER_GUIDE.md#the-big-model-dll-for-full-detail)).
-3. Choose your SvR 2011 game folder, your WWE 2K26 game folder (or AEW's `paks` folder), click **Load**, pick a
-   wrestler, choose **Full detail + HD texture pack** and click **Port to SvR 2011**.
+2. Choose your SvR 2011 game folder, then click **Big-model DLL…** and **Install** (needed for full-detail models and
+   their HD textures; [how and why](docs/USER_GUIDE.md#the-big-model-dll-for-full-detail)). Start the game once.
+3. Choose your source - the WWE 2K26 game folder, a folder of 2K mods (2K19 – 2K26), one model file (**Model…**) or
+   AEW's `paks` folder - click **Load**, pick a wrestler, choose **Full detail + HD texture pack** and click
+   **Port to SvR 2011**.
 4. **Install to game…** (a new superstar) or **Install as attire…** (a new look for a superstar the game has).
 
 Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**.
@@ -32,8 +33,10 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
 ## What PortIT does
 
 - **Reads the wrestlers straight from your own games**
-  - **WWE 2K26**: point it at the WWE 2K26 game folder (all wrestlers are read from its archives) or at a folder of
-    2K wrestler mods (`BaseModel\baseModel.mcd` + an attire folder). 2K25-era `.mcd` files work too.
+  - **WWE 2K26**: point it at the WWE 2K26 game folder (all wrestlers are read from its archives).
+  - **WWE 2K19 – 2K26 mods**: a folder of 2K wrestler mods, one wrestler's folder, or one model file - `.mcd` (2K25,
+    2K26), `.mdl` (2K20, 2K22, 2K23, 2K24) or a `chNNNNN.pac` pack (2K19 – 2K22, the older Yuke's format). No game
+    install needed.
   - **AEW Fight Forever**: the PS4 dump's `...\CUSA34641\elite\content\paks` folder.
 - **Preview before porting** — see the wrestler as he or she is, untick clothes, gear or hair to leave them out, and
   draw the preview again with that edit.
@@ -44,13 +47,17 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
   (talking, yelling, selling) work. Which skin is upper lip and which is lower comes from the source game's own data
   (2K's FACS jaw-open shape, AEW's lip and jaw bones), the mouth corners stay round, and AEW wrestlers keep their own
   teeth, gums and tongue.
-- **No glazed look** — SvR's skin shine is worked out from the source materials instead of copied.
+- **Face paint** — 2K26 face paint (a paint layer, or an attire's own face textures: Ultimate Warrior, Umaga, Tama
+  Tonga's FacePaint look…) is laid on the face as the game does it, in the preview and in the port.
+- **No glazed look** — SvR's skin shine is worked out from the source materials instead of copied; each wrestler's
+  normal maps are checked so the muscle detail is lit the right way round.
 - **Clothes and hair that follow the body** — tight gear moves with the skin under it, the skin under it is hidden,
   hair and beard cards keep their real colour and follow the face.
 - **Checks in every report** — face points that would swing too far, gear that would drift from the skin, and the
   game's hard limits (a model that would crash is never handed out).
 - **Install** — as a new superstar (`Mods\Superstars`), or as an **attire** of a superstar the game has (a new attire,
-  or replacing one; the same rules as the Mod Maker's Attires page). The HD textures go into your enabled texture pack.
+  or replacing one; the same rules as the Mod Maker's Attires page). The HD textures go into your enabled texture pack,
+  at the size you pick (4K by default, about 21 MB a wrestler; 8K or 2K). The big-model DLL installs from PortIT too.
 - **`.svrmod`** — every port is also saved as a `.svrmod`, so you can open it in the **Mod Maker** and edit the name,
   stats, moves, entrance and so on. The HD textures come in a zip for the `Texture Packs` folder.
 
@@ -58,7 +65,8 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
 
 - **Windows 10 / 11** (64-bit) and the **SvR 2011 PC port** (2.1.6 or newer for full detail; its `pac\ch` stock
   models are the templates).
-- Your own copy of **WWE 2K26** and/or the files of your own **AEW Fight Forever** (PS4).
+- Your own copy of **WWE 2K26**, 2K wrestler mods (2K19 – 2K26), and/or the files of your own **AEW Fight Forever**
+  (PS4). (A few WWE 2K19 / 2K20 packs are Oodle-packed: PortIT then uses the `oo2core` DLL of your own WWE 2K install.)
 - The release download has everything else inside.
 
 ## Build from source

@@ -13,7 +13,7 @@
               <TextBlock Text="PortIT" FontSize="20" FontWeight="Bold" />
               <Border Classes="tag" VerticalAlignment="Center"><TextBlock Text="port tool" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource AccentHi}" /></Border>
             </StackPanel>
-            <TextBlock Classes="sub" Text="Bring WWE 2K26 and AEW Fight Forever wrestlers into SvR 2011" />
+            <TextBlock Classes="sub" Text="Bring WWE 2K19 - 2K26 and AEW Fight Forever wrestlers into SvR 2011" />
           </StackPanel>
         </StackPanel>
         <Border Grid.Column="1" Margin="30,0,12,0" VerticalAlignment="Center" Classes="field">
@@ -24,6 +24,8 @@
         </Border>
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
           <Button x:Name="GameBrowse" Content="Browse…" />
+          <Button x:Name="BigModelButton" Content="Big-model DLL…"
+                  ToolTip.Tip="Install / check PortIT's big-model DLL (xinput1_4.dll) in the game folder: needed for full-detail models and their HD textures" />
         </StackPanel>
       </Grid>
     </Border>
@@ -38,13 +40,15 @@
             <TextBlock Grid.Column="2" x:Name="CountText" Classes="faint" Text="nothing loaded" VerticalAlignment="Center" />
           </Grid>
           <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" Margin="0,12,0,8">
-            <ToggleButton x:Name="Src2K" Content="WWE 2K26" IsChecked="True" Classes="chip" />
+            <ToggleButton x:Name="Src2K" Content="WWE 2K19 - 2K26" IsChecked="True" Classes="chip" />
             <ToggleButton x:Name="SrcAEW" Content="AEW Fight Forever" Classes="chip" />
           </StackPanel>
-          <Grid Grid.Row="2" ColumnDefinitions="*,6,Auto,6,Auto" Margin="0,0,0,8">
-            <TextBox x:Name="SourceBox" Watermark="Folder with the 2K26 wrestlers" />
-            <Button Grid.Column="2" x:Name="SourceBrowse" Content="…" ToolTip.Tip="Choose the folder" />
-            <Button Grid.Column="4" x:Name="LoadButton" Content="Load" />
+          <Grid Grid.Row="2" ColumnDefinitions="*,6,Auto,6,Auto,6,Auto" Margin="0,0,0,8">
+            <TextBox x:Name="SourceBox" Watermark="Folder with the 2K wrestlers" />
+            <Button Grid.Column="2" x:Name="SourceBrowse" Content="…" ToolTip.Tip="Choose a folder: a 2K game, a mods folder or one wrestler's folder" />
+            <Button Grid.Column="4" x:Name="OpenModelButton" Content="Model…"
+                    ToolTip.Tip="Open one model file: a wrestler's baseModel / attire .mcd or .mdl (2K20 - 2K26), or a chNNNN.pac (2K19 - 2K22)" />
+            <Button Grid.Column="6" x:Name="LoadButton" Content="Load" />
           </Grid>
           <TextBox Grid.Row="3" x:Name="SearchBox" Watermark="Find a wrestler" Margin="0,0,0,10" />
           <ListBox Grid.Row="4" x:Name="WrestlerList" Classes="rows">
@@ -132,6 +136,11 @@
             <StackPanel Spacing="3">
               <TextBlock Classes="label" Text="Model memory" />
               <ComboBox x:Name="BudgetBox" HorizontalAlignment="Stretch" />
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Classes="label" Text="HD texture size (full detail)" />
+              <ComboBox x:Name="HdBox" HorizontalAlignment="Stretch"
+                        ToolTip.Tip="The size of the HD texture pack a full-detail port writes: smaller saves disk space, larger is sharper" />
             </StackPanel>
             <CheckBox x:Name="FaceCheck" Content="Face animation (weights from a stock SvR head)" IsChecked="True" />
             <Grid ColumnDefinitions="*,8,*">

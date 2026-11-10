@@ -323,6 +323,26 @@ def skin(verts, normals, weights, M):
 
 
 # ---------------------------------------------------------------- textures
+GREEN_TURN_AT = 1.05
+
+
+def green_curl_ratio(r, g, side=512):
+    """a normal map's curl with green as it is / with green turned (x, y in 0 - 255). A normal map is the slope of a
+    surface, so its x / y only add up (little curl) with green the right way: under 1, green points the way SvR's does;
+    over 1, the other way; ~1, too little relief to tell. Used on the face map only (port_2k.check_green): small gear
+    maps with strong patterns can mislead it - 2K26 CM Punk's arm pieces read 1.64 / 1.75 though right in the game."""
+    from PIL import Image as _I
+    def small(c):
+        im = _I.fromarray(np.clip(c, 0, 255).astype(np.uint8))
+        return np.asarray(im.resize((min(side, im.size[0]), min(side, im.size[1])), _I.BOX)).astype(np.float64) / 255 - 0.5
+    x, y = small(r), small(g)
+    if x.shape[0] < 8 or x.shape[1] < 8:
+        return 1.0
+    a = np.abs(np.gradient(y, axis=1) - np.gradient(x, axis=0)).mean()
+    b = np.abs(np.gradient(-y, axis=1) - np.gradient(x, axis=0)).mean()
+    return float(a / b) if b > 1e-9 else 1.0
+
+
 def cell_image(path, cell, mode='RGB', normal=False):
     im = Image.open(path)
     im.load()
@@ -356,8 +376,12 @@ def cell_uv(cell, uv):
     return np.stack([u, v], axis=1)
 
 
+TEX_FIRST = []     # (folders looked in before the attire's / base model's: port_2k.face_paint - the head with its face
+#                     paint laid on, an attire's own BaseModel\Textures_<look>)
+
+
 def find_tex(char, attire, base, suffix):
-    for folder in (os.path.join(char, attire, 'Textures'), os.path.join(char, 'BaseModel', 'Textures')):
+    for folder in TEX_FIRST + [os.path.join(char, attire, 'Textures'), os.path.join(char, 'BaseModel', 'Textures')]:
         if not os.path.isdir(folder):
             continue
         for f in os.listdir(folder):

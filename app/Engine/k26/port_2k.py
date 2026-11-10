@@ -116,6 +116,10 @@ def setup(char, attire, female=False, full=False):
         if rai:
             dst = os.path.join(os.path.dirname(rai), t + '_color.png')
             BM.hair_colour(rai, dst, rgb)
+        elif not ms[0].get('texture'):
+            # (no rai map and no colour map: the mod leaves them to the 2K game's own files - 2K24 Brooks Jensen's
+            #  hair_alpha. Its own per-vertex colour, flat, not the grey-white placeholder, PortIT 2026-11-10)
+            R.SOLID = dict(R.SOLID, **{t: tuple(int(c) for c in rgb)})
         cards[t] = rgb
     info = {'meshes': {m['name']: len(m['verts']) for m in meshes}, 'cells': cells, 'cards': cards,
             'cutout': sorted(R.CUTOUT), '_meshes': meshes, '_tnames': tnames}
@@ -192,6 +196,49 @@ def card_meshes(info):
                    for t in cut)]
 
 
+def face_paint(R, char, attire, out, log):
+    """2K26 face paint and per-attire base textures (portit/face_paint.py) -> R.TEX_FIRST, the folders looked in first"""
+    sys.path.insert(0, os.path.join(os.path.dirname(HERE), 'portit'))
+    import face_paint as FPaint
+    R.TEX_FIRST = FPaint.prepare(char, attire_dir(char, attire), out, log)
+
+
+def check_green(R, char, attire, log):
+    """the wrestler's face normal map measured as the sheet will use it (R.green_curl_ratio, with R.NORMAL_FLIP_G
+    applied): clearly over 1 means green points against SvR's, so the green rule is turned for all his maps. Measured
+    on ports proven right in the game - 2K26 CM Punk's face 0.80, 2K24 Brooks 0.69, 2K25 Rock 0.68, the 2K22 packs
+    0.55 - 0.75 - and the 2K23 file of the 2K19-era Alundra Blayze, 1.69 (her green was the wrong way), 2026-11-10.
+    Only the face map decides: it has the clearest relief (gear maps with strong patterns can mislead the test)."""
+    from PIL import Image
+    p = R.find_tex(char, attire_dir(char, attire), 'head', '_nrm')
+    if not p:
+        return
+    try:
+        im = Image.open(p)
+        im.load()
+        a = np.asarray(im.convert('RGB').resize((1024, 1024), Image.LANCZOS)).astype(np.float64)
+    except Exception:   # noqa: BLE001
+        return
+    g = 255.0 - a[..., 1] if R.NORMAL_FLIP_G else a[..., 1]
+    r = R.green_curl_ratio(a[..., 0], g)
+    if r > R.GREEN_TURN_AT:
+        R.NORMAL_FLIP_G = not R.NORMAL_FLIP_G
+        log('normal maps: the face map measures %.2f (over 1: green against SvR\'s) - green %s for this wrestler'
+            % (r, 'flipped' if R.NORMAL_FLIP_G else 'kept as stored'))
+    else:
+        log('normal maps: the face map measures %.2f - green as set' % r)
+
+
+def yukes_pack(char):
+    """a wrestler unpacked from a WWE 2K19 - 2K22 pack (its base model is a readers/jboy_2k.py pointer file)"""
+    try:
+        import rock_fbx
+        with open(rock_fbx.base_mcd(char), 'rb') as f:
+            return f.read(4) == b'PJBY'
+    except OSError:
+        return False
+
+
 def build(char, attire, out, game, budget=190, template=None, log=print, female=False, pack_prefix='portit_hd', leave_out=(),
           bridge=None):
     """-> pac, builder report, report lines, info (+ info['pack']: the texture pack files, info['checks']).
@@ -203,11 +250,18 @@ def build(char, attire, out, game, budget=190, template=None, log=print, female=
     FP.GEAR_HEAD[0] = bridge is not None
     import rock_model
     rock_model.TEMPLATE_MOUTH = bridge is None
-    rock_model.NORMAL_FLIP_G = bridge is None      # (2K26 green flipped to SvR's; AEW's matches already)
+    # (2K26 green flipped to SvR's; AEW's matches already. The WWE 2K19 - 2K22 Yuke's packs (readers/jboy_2k.py) match
+    #  too: their maps are the slope with green pointing down as stored - the curl test, 0.70 - 0.86 against green
+    #  flipped - and flipping them turned John Cena's chest and arm shading inside out in the game, 2026-11-10)
+    rock_model.NORMAL_FLIP_G = bridge is None and not yukes_pack(char)
     rock_model.CORNER_SMOOTH = 14   # (the mouth corners' hard weight edge: AEW first, 2K26 too - the user asked, 2026-11-09)
     if bridge is not None:
         rock_fbx.build = bridge.build
         char, attire = bridge.char, bridge.attire
+    rock_model.TEX_FIRST = []
+    if bridge is None:
+        face_paint(rock_model, char, attire, out, log)
+        check_green(rock_model, char, attire, log)      # (AEW: its maps are right as they are, proven in the game)
     try:
         return _build(char, attire, out, game, budget, template, log, female, pack_prefix, leave_out)
     finally:

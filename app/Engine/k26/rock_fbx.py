@@ -1,5 +1,5 @@
 """PortIT's stand-in for tools/k26_porter/rock_fbx.py: the same build() the proven rock_model.py pipeline calls,
-fed by PortIT's own .mcd reader (readers/mcd_parse.py, checked byte-exact against VCModel.dll on 28 files) instead
+fed by PortIT's own .mcd reader (readers/mcd_parse.py, checked byte-exact against a reference model library on 28 files) instead
 of the DLL. covered() and texture_for() and the hide-under-gear rule are the original's, unchanged.
 
 build() returns what the original returned: meshes [{name (M_...), verts, normals (+Y up: TURN), uv (the DLL's
@@ -29,9 +29,12 @@ HIDE_OUT_CM, HIDE_IN_CM = 4.0, 8.0   # skin under the gear (out) or poking throu
 SKIP_VARIANTS = True                 # PortIT: 2K's alternate looks (M_Outfit_strapsDown next to M_Outfit) left out
 
 
-def texture_for(material, folders, outdir):
+def texture_for(material, folders, outdir, extra=None):
+    """extra: the colour texture the mod's .mtls names for this material (2K20 - 2K24 mods; tried last)"""
     base = material.split(':')[0]
     cands = [base, base.rsplit('_', 1)[0] if base.endswith(('_l', '_r')) else base]
+    if extra and extra.lower().endswith('_color'):
+        cands.append(extra[:-len('_color')])
     for folder in folders:
         for c in cands:
             hits = [p for p in glob.glob(os.path.join(folder, 'Textures', '*')) if
@@ -104,7 +107,8 @@ def object_names(m, mdir):
         cand = [s for s in names if re.sub(r'_alpha$', '', s) == key] or \
                [s for s in names if s.startswith(key) or key.endswith(re.sub(r'_alpha$', '', s))] or \
                [s for s in names if re.sub(r'_alpha$', '', s) in key]
-        out.append(names[sorted(cand, key=len)[0]] if cand else key)
+        # (no name match: the material the mesh's triangles use - older mods name meshes freely, PortIT 2026-11-10)
+        out.append(names[sorted(cand, key=len)[0]] if cand else mb.get('object') or key)
     return out
 
 
@@ -112,15 +116,25 @@ def attire_mcd(char, attire):
     d = os.path.join(char, attire)
     if os.path.isfile(d):
         return d
-    c = [p for p in glob.glob(os.path.join(d, '*.mcd'))]
+    # (.mdl: 2K20 - 2K24 models, PortIT 2026-11-10)
+    c = [p for p in glob.glob(os.path.join(d, '*')) if p.lower().endswith(('.mcd', '.mdl'))]
     if not c:
-        raise ValueError('no .mcd in %s' % d)
-    return sorted(c, key=lambda p: (os.path.basename(p).lower() != 'attire.mcd', p))[0]
+        raise ValueError('no .mcd / .mdl in %s' % d)
+    return sorted(c, key=lambda p: (os.path.basename(p).lower() not in ('attire.mcd', 'attire.mdl'), p))[0]
+
+
+def base_mcd(char):
+    """BaseModel/baseModel.mcd (2K25 / 2K26) or baseModel.mdl (2K20 - 2K24)"""
+    d = os.path.join(char, 'BaseModel')
+    for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if f.lower() in ('basemodel.mcd', 'basemodel.mdl'):
+            return os.path.join(d, f)
+    return os.path.join(d, 'baseModel.mcd')
 
 
 def build(char, attire, out, want_bones=False):
     os.makedirs(os.path.join(out, 'textures'), exist_ok=True)
-    base = Mcd(os.path.join(char, 'BaseModel', 'baseModel.mcd'))
+    base = Mcd(base_mcd(char))
     apath = attire_mcd(char, attire)
     att = Mcd(apath)
     adir = os.path.dirname(apath)
@@ -140,6 +154,8 @@ def build(char, attire, out, want_bones=False):
                           world=world))
     by_name = {src[i]['name']: new[i] for i in keep}
     meshes, report = [], []
+    import mtls
+    colors = mtls.color_maps(char)
     for model, folder, mpath in ((base, os.path.join(char, 'BaseModel'), None), (att, adir, apath)):
         objs = object_names(model, folder)
         mats = [mb['material'] for mb in model.meshes]
@@ -180,7 +196,8 @@ def build(char, attire, out, want_bones=False):
                     t = by_name[names[j]]
                     w[t] = w.get(t, 0) + np.where(bi == b, bw, 0.0)
             mat = objs[k]
-            tex = texture_for(mat, [folder, os.path.join(char, 'BaseModel'), adir], out)
+            tex = texture_for(mat, [folder, os.path.join(char, 'BaseModel'), adir], out,
+                              extra=colors.get(re.sub(r'(?i):skinned$', '', mat).lower()))
             meshes.append(dict(name=name, verts=verts @ TURN.T, normals=nrm @ TURN.T, uv=uv, tris=tris,
                                material=mat, texture=tex, weights=w))
             if name == 'M_Head':
@@ -207,7 +224,8 @@ def lip_side_au27(mb, n, amount=False):
     'au027_u': the skin it moves down (native +Y) is the jaw's), or None without one. The face transfer takes each
     lip vertex's side from this, not from walking the lips' edge (2K26 CM Punk: the walk changed lips where they
     touch, half his upper lip went with the jaw, 2026-11-09)"""
-    s = next((s for s in (mb.get('shapes') or []) if s['name'].lower() in ('au027_u', 'au026_u', 'au027')), None)
+    # (jaw_dn: the WWE 2K19 - 2K22 packs' own jaw-open shape - it moves the chin down 4 - 5 cm like AU27)
+    s = next((s for s in (mb.get('shapes') or []) if s['name'].lower() in ('au027_u', 'au026_u', 'au027', 'jaw_dn')), None)
     if s is None:
         return None
     d = np.zeros(n)

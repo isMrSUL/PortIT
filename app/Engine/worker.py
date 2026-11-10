@@ -5,10 +5,11 @@ and reads response.json {ok, ...} / {ok: false, error}. Progress lines go to std
 Commands:
   list     {source: '2k26' | 'aew', path}                 -> wrestlers [{id, name, female, attires?}]
   inspect  {source, path, id, attire?}                     -> meshes [{name, kind, verts, variant, textures}]
-  port     {source, path, id, attire?, game, out, female, budget, face, mod_id, mod_name, template?, leave_out?: [mesh]}
+  port     {source, path, id, attire?, game, out, female, budget, face, mod_id, mod_name, template?, leave_out?: [mesh], hd_size?: 8192|4096|2048}
                                                            -> {out, pac, pages, report[], preview}
   preview  {pac, out}                                      -> {preview}
   source_preview {source, path, id, attire?, leave_out?}   -> {preview}   (the 2K source drawn before porting)
+  bigmodel {game, action: status | install | remove}     -> {installed: portit | other | none, active, version, note}
   install  {mod_dir, game, mod_id}                         -> {installed, pack?, pack_enabled?}   (Mods/Superstars/<id>, old
                                                               one backed up; the texture_pack folder into the game's enabled texture pack)
 Game files are only read; output goes to a new folder (install copies into the game only when asked).
@@ -32,15 +33,32 @@ def list_2k(path):
     import source_2k
     out = []
     for root, dirs, files in os.walk(path):
-        if os.path.basename(root).lower() == 'basemodel' and any(f.lower() == 'basemodel.mcd' for f in files):
+        if os.path.basename(root).lower() == 'basemodel' and any(source_2k.is_base_model(f) for f in files):
             folder = os.path.dirname(root)
-            _, att = source_2k.find_wrestler(folder)
+            base, att = source_2k.find_wrestler(folder)
             name = os.path.basename(folder)
             parts = name.split('_')
             nice = ' '.join(parts[1:] if parts[0].isdigit() else parts)
-            out.append({'id': folder, 'name': nice, 'female': 'female' in folder.lower(),
+            # (PortIT 2026-11-10: by 2K's own data - the women's body template; the folder name too)
+            import mcd_parse
+            female = 'female' in folder.lower() or bool(base and mcd_parse.looks_female(base))
+            out.append({'id': folder, 'name': nice, 'female': female,
                         'attires': [os.path.relpath(a, folder) for a in att], 'group': os.path.basename(os.path.dirname(folder))})
             dirs[:] = []
+            continue
+        # (PortIT 2026-11-10: WWE 2K19 - 2K22 character packs, chNNNNN.pac - one entry per pack, unpacked when chosen)
+        import jboy_2k
+        packs = sorted(f for f in files if f.lower().endswith('.pac') and jboy_2k.is_character_pack(f)
+                       and jboy_2k.is_pac(os.path.join(root, f)))
+        for f in packs:
+            pac = os.path.join(root, f)
+            name = os.path.basename(root)
+            nice = name + (' (%s)' % os.path.splitext(f)[0] if len(packs) > 1 else '')
+            cached = jboy_2k.cached(pac)
+            import mcd_parse
+            female = bool(cached and mcd_parse.looks_female(os.path.join(cached, 'BaseModel', 'baseModel.mdl')))
+            out.append({'id': PAC_PREFIX + pac, 'name': nice, 'female': female, 'attires': ['Attire'],
+                        'group': os.path.basename(os.path.dirname(root))})
     return sorted(out, key=lambda r: r['name'].lower())
 
 
@@ -106,9 +124,17 @@ def list_game(game):
     return sorted(out, key=lambda r: r['name'].lower())
 
 
+PAC_PREFIX = 'pac:'
+
+
 def resolve_cak(req):
     """a game wrestler (id 'cak:...'): his base model + the chosen attire extracted (cached) -> req['id'] = that folder,
-    as a 2K26 mod folder"""
+    as a 2K26 mod folder. A WWE 2K19 - 2K22 pack (id 'pac:<chNNNNN.pac>'): unpacked (cached) the same way."""
+    if req.get('source') == '2k26' and str(req.get('id', '')).startswith(PAC_PREFIX):
+        import jboy_2k
+        pac = req['id'][len(PAC_PREFIX):]
+        name = os.path.basename(os.path.dirname(pac)) + ' ' + os.path.splitext(os.path.basename(pac))[0]
+        return dict(req, id=jboy_2k.extract(pac, name, log=log), attire=os.path.join('Attire', 'Attire.mdl'))
     if req.get('source') != '2k26' or not str(req.get('id', '')).startswith(CAK_PREFIX):
         return req
     folder = req['id'][len(CAK_PREFIX):]
@@ -133,7 +159,33 @@ def load_source(req):
     return source_aew.load(req['path'], req['id'])
 
 
+def model_file_folder(path):
+    """one chosen model file (people's request 2026-11-10: open just one model, without a whole game or mod folder):
+    a 2K wrestler's .mcd / .mdl -> its wrestler folder (the one holding BaseModel); a .pac -> None (listed alone)"""
+    d = os.path.dirname(os.path.abspath(path))
+    for _ in range(4):
+        if os.path.isdir(os.path.join(d, 'BaseModel')):
+            return d
+        d = os.path.dirname(d)
+    return None
+
+
 def cmd_list(req):
+    if req['source'] == '2k26' and os.path.isfile(req['path']):
+        p = req['path']
+        if p.lower().endswith('.pac'):
+            import jboy_2k
+            if not jboy_2k.is_pac(p):
+                raise ValueError('%s is not a WWE 2K19 - 2K22 character pack' % os.path.basename(p))
+            cached = jboy_2k.cached(p)
+            import mcd_parse
+            return {'wrestlers': [{'id': PAC_PREFIX + p, 'name': os.path.basename(os.path.dirname(p)) + ' (%s)' % os.path.basename(p)[:-4],
+                                   'female': bool(cached and mcd_parse.looks_female(os.path.join(cached, 'BaseModel', 'baseModel.mdl'))),
+                                   'attires': ['Attire'], 'group': 'chosen file'}]}
+        folder = model_file_folder(p)
+        if not folder:
+            raise ValueError('No BaseModel folder beside %s: choose a wrestler\'s baseModel / attire model file' % p)
+        return {'wrestlers': list_2k(folder)}
     if req['source'] == '2k26':
         if is_game_folder(req['path']):
             return {'wrestlers': list_game(req['path'])}
@@ -239,7 +291,7 @@ def manifest(mod_id, name, base, female, pac=None):
     """the superstar mod's manifest.txt (docs/SVRMOD_FORMAT.md 3.1); pac: the built ch.pac - over the old 192-page
     window it says needs=2.1.6 (the big-model memory), as the Mod Maker and its converters write it"""
     lines = ['type=superstar', 'id=%s' % mod_id, 'name=%s' % name[:31], 'short=%s' % name[:31], 'base=%s' % base,
-             'author=', 'version=1.0', 'made_with=PortIT 1.0.1', 'ratings=80,80,80,80,80,80,80', 'call=48']
+             'author=', 'version=1.0', 'made_with=PortIT 1.1.0', 'ratings=80,80,80,80,80,80,80', 'call=48']
     if pac:
         try:
             import model_budget
@@ -332,8 +384,11 @@ def cmd_port(req):
             req = dict(req, female=bridge.female)
         else:
             att = req.get('attire') or (port_2k_attires(req['id']) or ['Default_Attire'])[0]
-            att = os.path.dirname(att) if att.lower().endswith('.mcd') else att
+            att = os.path.dirname(att) if att.lower().endswith(('.mcd', '.mdl')) else att
         budget = int(req.get('budget', 190))
+        # (the HD pack's size: 8192 / 4096 / 2048 wide - PortIT 2026-11-10, people's packs reached ~1 GB at 8192)
+        import full_port
+        full_port.PACK_SIZE[0] = int(req.get('hd_size') or 4096) if int(req.get('hd_size') or 4096) in (2048, 4096, 8192) else 4096
         mod_id = req.get('mod_id') or 'portit_' + time.strftime('%Y%m%d_%H%M%S')
         log('porting with the Rock / Brock pipeline (%s)...' % ('full detail + texture pack' if budget >= port_2k.FULL_BUDGET
                                                                else '%d pages' % budget))
@@ -453,6 +508,60 @@ def cmd_install_attire(req):
     return attires.install(req, lambda s, g, _id: copy_texture_pack(s, g, os.path.basename(os.path.normpath(src))))
 
 
+BIGMODEL_DLL = os.path.join(HERE, 'bigmodel', 'xinput1_4.dll')
+
+
+def _sha(p):
+    import hashlib
+    with open(p, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def cmd_bigmodel(req):
+    """the big-model DLL in the SvR game folder (people's request 2026-11-10: install it from PortIT).
+    {game, action: 'status' | 'install' | 'remove'} -> {installed: 'portit' | 'other' | 'none', active, version, note}
+    The DLL is xinput1_4.dll beside svr2011.exe: the game loads it on start; it raises a wrestler's model memory
+    window from 768 KB to 4096 KB, so full-detail ports and their HD texture pack can be used. Another mod's
+    xinput1_4.dll is never overwritten without a copy kept (xinput1_4.dll.before_portit)."""
+    game = req['game']
+    if not os.path.isfile(os.path.join(game, 'svr2011.exe')):
+        raise ValueError('svr2011.exe is not in %s - choose the SvR 2011 game folder' % game)
+    dst = os.path.join(game, 'xinput1_4.dll')
+    keep = dst + '.before_portit'
+    action = req.get('action', 'status')
+    if action in ('install', 'remove'):
+        import subprocess
+        out = subprocess.run(['tasklist'], capture_output=True, text=True).stdout.lower()
+        if 'svr2011.exe' in out:
+            raise RuntimeError('Close the game first (svr2011.exe is running): Windows keeps the DLL in use')
+    if action == 'install':
+        if os.path.isfile(dst) and _sha(dst) != _sha(BIGMODEL_DLL) and not os.path.exists(keep):
+            shutil.copy2(dst, keep)          # (another mod's xinput1_4.dll: kept)
+        shutil.copy2(BIGMODEL_DLL, dst)
+    elif action == 'remove':
+        if os.path.isfile(dst) and _sha(dst) == _sha(BIGMODEL_DLL):
+            os.remove(dst)
+            if os.path.exists(keep):
+                os.replace(keep, dst)        # (the other mod's DLL back)
+    state = 'none'
+    if os.path.isfile(dst):
+        state = 'portit' if _sha(dst) == _sha(BIGMODEL_DLL) else 'other'
+    active, note = False, ''
+    logf = os.path.join(game, 'bigmodel.log')
+    if os.path.isfile(logf):
+        import re
+        txt = open(logf, encoding='utf-8', errors='replace').read()
+        m = re.findall(r'vertex windows[^:]*: *\d+ *-> *(\d+) *KB', txt)
+        active = bool(m) and int(m[-1]) > 768
+        note = ('the last game start used it: %s KB a wrestler' % m[-1]) if m else 'its log shows no model memory line yet'
+    version = ''
+    rf = os.path.join(game, 'release_files.txt')
+    if os.path.isfile(rf):
+        version = open(rf, encoding='utf-8', errors='replace').readline().strip()
+    return {'installed': state, 'active': active, 'version': version, 'note': note,
+            'has_backup': os.path.exists(keep)}
+
+
 def check_runtime():
     """NumPy and Pillow load, or a message that says what to do (PortIT 1.0.1: on some PCs Windows or the antivirus
     blocked or removed NumPy's DLLs - users got NumPy's long 'Importing the numpy C-extensions failed' text)"""
@@ -481,7 +590,8 @@ def main(inp, outp):
         dds_compat.install()
         res = {'list': cmd_list, 'inspect': cmd_inspect, 'port': cmd_port, 'preview': cmd_preview,
                'source_preview': cmd_source_preview, 'export_svrmod': cmd_export_svrmod,
-               'install': cmd_install, 'stars': cmd_stars, 'install_attire': cmd_install_attire}[req['command']](req)
+               'install': cmd_install, 'stars': cmd_stars, 'install_attire': cmd_install_attire,
+               'bigmodel': cmd_bigmodel}[req['command']](req)
         res['ok'] = True
     except Exception as e:
         traceback.print_exc()

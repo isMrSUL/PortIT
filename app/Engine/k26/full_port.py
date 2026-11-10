@@ -684,16 +684,37 @@ def pac_texture_hashes(pac, work):
     return out
 
 
+PACK_SIZE = [8192]   # (the HD sheets' width in the pack: 8192 (8192 x 4096, ~90 MB a wrestler), 4096 (~22 MB) or
+#                       2048 (~6 MB) - the worker sets it from the port request's hd_size, PortIT 2026-11-10: people's
+#                       packs reached ~1 GB)
+
+
 def make_pack(work, pac, out_dir, prefix, cut_cells, log=print):
-    """the full sheets (work\\color.png / normal.png) -> out_dir\\<prefix>_<color|normal>_<hash>.dds"""
+    """the full sheets (work\\color.png / normal.png) -> out_dir\\<prefix>_<color|normal>_<hash>.dds, at PACK_SIZE"""
     from PIL import Image
     os.makedirs(out_dir, exist_ok=True)
+    # (this port's older pack files go first: their names carry the old content hash, and left beside the new ones
+    #  they were installed too - each re-port added another 45 MB file, 2026-11-10)
+    for f in os.listdir(out_dir):
+        if f.startswith(prefix + '_') and f.lower().endswith('.dds'):
+            os.remove(os.path.join(out_dir, f))
     hashes = pac_texture_hashes(pac, work)
     files = []
     for nm in ('color', 'normal'):
         im = Image.open(os.path.join(work, nm + '.png')).convert('RGBA')
+        cells = cut_cells if nm == 'color' else []
+        w = PACK_SIZE[0]
+        if im.size[0] > w:
+            k = w / im.size[0]
+            if nm == 'normal':      # (RGB and alpha apart: Pillow premultiplies RGBA - see rock_model.cell_image)
+                rgb = im.convert('RGB').resize((w, int(im.size[1] * k)), Image.LANCZOS)
+                im = Image.merge('RGBA', rgb.split() + (im.getchannel('A').resize(rgb.size, Image.LANCZOS),))
+            else:
+                import w13_char as W
+                im = W.resize_rgba(im, (w, int(im.size[1] * k)), Image.LANCZOS)
+            cells = [tuple(int(round(v * k)) for v in c) for c in cells]
         f = os.path.join(out_dir, '%s_%s_%s.dds' % (prefix, nm, hashes[nm]))
-        open(f, 'wb').write(_dds_levels(im, cut_cells if nm == 'color' else []))
+        open(f, 'wb').write(_dds_levels(im, cells))
         files.append(f)
         log('texture pack: %s (%d x %d, %.1f MB)' % (os.path.basename(f), im.size[0], im.size[1], os.path.getsize(f) / 1048576))
     return files

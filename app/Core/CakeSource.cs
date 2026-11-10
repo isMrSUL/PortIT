@@ -120,7 +120,26 @@ public static class CakeSource
     static string Extract(string game, string cache, Dictionary<string, (string Archive, long Size)> index, string folder, string attire)
     {
         string attireDir = attire.Replace('/', '\\').Split('\\')[0];
-        string[] prefixes = { $"Characters/{folder}/BaseModel/", $"Characters/{folder}/{attireDir}/" };
+        var prefixes = new List<string> { $"Characters/{folder}/BaseModel/", $"Characters/{folder}/{attireDir}/" };
+        // (PortIT 2026-11-10: an attire that is only a model - Tama Tonga's 1220_FacePaint holds just its .mcd / .ycl -
+        //  wears the textures and materials of a sibling attire: the Default one, else the first with textures; that
+        //  attire's Textures / Materials come out too, beside it, for the port's fallback)
+        string charPrefix = $"Characters/{folder}/";
+        bool ownTextures = index.Keys.Any(k => k.StartsWith($"{charPrefix}{attireDir}/Textures/", StringComparison.OrdinalIgnoreCase));
+        if (!ownTextures)
+        {
+            var donors = index.Keys.Where(k => k.StartsWith(charPrefix, StringComparison.OrdinalIgnoreCase))
+                .Select(k => k.Substring(charPrefix.Length).Split('/'))
+                .Where(p => p.Length >= 3 && p[1].Equals("Textures", StringComparison.OrdinalIgnoreCase)
+                            && !p[0].Equals("BaseModel", StringComparison.OrdinalIgnoreCase))
+                .Select(p => p[0]).Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(d => d.EndsWith("Default_Attire", StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(d => d).ToList();
+            if (donors.Count > 0)
+            {
+                prefixes.Add($"{charPrefix}{donors[0]}/Textures/");
+                prefixes.Add($"{charPrefix}{donors[0]}/Materials/");
+            }
+        }
         // (what PortIT reads: models, material lists, textures - not the cloth data (.ycl) and not the few entries
         //  some archives list under a doubled path, Characters/X/Y/Characters/X/Y/..., which do not extract)
         string[] keep = { ".mcd", ".jmtl", ".mtls", ".tex" };

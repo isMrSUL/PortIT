@@ -200,7 +200,11 @@ def render_source(src, out, size=(1000, 760), lod=1, tex_side=512, title='the 2K
         texs = me.textures or {}
         col = image(texs['color'], 'c') if 'color' in texs else None
         cut, solid = None, (200, 200, 205)
-        if me.kind in ('hair',) or (me.cutout and col is None):
+        # (hair with its own colour map and no rai map - 2K19 - 2K22 packs, 2K19-era models - draws its colour map,
+        #  alpha as the cut-out; 2K23+ hair has no colour map: the flat vertex colour below, PortIT 2026-11-10)
+        if me.kind in ('hair',) and col is not None and 'rai' not in texs:
+            cut = (col, 3)
+        elif me.kind in ('hair',) or (me.cutout and col is None):
             rai = image(texs['rai'], 'r') if 'rai' in texs else None
             if rai is not None:
                 cut = (rai, 1)

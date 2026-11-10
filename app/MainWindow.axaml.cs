@@ -29,6 +29,13 @@ public partial class MainWindow : Window
         public bool CanRemove { get; }
         public bool Keep { get; set; } = true;
     }
+    public sealed record HdSize(string Label, int Width)
+    {
+        public override string ToString() => Label;
+    }
+
+    bool FullDetail => ((BudgetBox.SelectedItem as Budget)?.Pages ?? 0) >= 1500;
+
     public sealed record Budget(string Label, int Pages)
     {
         public override string ToString() => Label;
@@ -56,6 +63,15 @@ public partial class MainWindow : Window
             new Budget("Bigger window - 500 pages (2048 KB builds)", 500),
             new Budget("Full detail + HD texture pack (game 2.1.6+)", 1500),
         };
+        // (the HD pack's size - people's packs reached ~1 GB at 8192: 4K is the default now, 2026-11-10)
+        HdBox.ItemsSource = new[]
+        {
+            new HdSize("8K - 8192 x 4096 (sharpest, ~90 MB a wrestler)", 8192),
+            new HdSize("4K - 4096 x 2048 (~22 MB a wrestler)", 4096),
+            new HdSize("2K - 2048 x 1024 (~6 MB a wrestler)", 2048),
+        };
+        HdBox.SelectedIndex = int.TryParse(LoadSetting("hdsize"), out int hd) && hd is >= 0 and <= 2 ? hd : 1;
+        HdBox.SelectionChanged += (_, _) => SaveSetting("hdsize", HdBox.SelectedIndex.ToString());
         GameBox.Text = LoadSetting("game") ?? "";
         BudgetBox.SelectedIndex = int.TryParse(LoadSetting("budget"), out int b) ? b : DetectBudget(GameBox.Text);
         GameBox.LostFocus += (_, _) => BudgetBox.SelectedIndex = DetectBudget(GameBox.Text);
@@ -78,9 +94,12 @@ public partial class MainWindow : Window
         AttireButton.Click += async (_, _) => await InstallAttire();
         SourcePreviewButton.Click += async (_, _) => await SourcePreview();
         GameBrowse.Click += async (_, _) => { if (await PickFolder("Choose the SvR 2011 game folder") is string p) { GameBox.Text = p; SaveSetting("game", p); } };
-        SourceBrowse.Click += async (_, _) => { if (await PickFolder(SrcAEW.IsChecked == true ? "Choose AEW's paks folder (…\\content\\paks)" : "Choose the folder with the 2K26 wrestlers") is string p) { SourceBox.Text = p; } };
+        SourceBrowse.Click += async (_, _) => { if (await PickFolder(SrcAEW.IsChecked == true ? "Choose AEW's paks folder (…\\content\\paks)" : "Choose a 2K folder: a 2K26 install, a mods folder or one wrestler") is string p) { SourceBox.Text = p; } };
         OutBrowse.Click += async (_, _) => { if (await PickFolder("Choose where PortIT writes the mods") is string p) { OutBox.Text = p; SaveSetting("out", p); } };
-        BudgetBox.SelectionChanged += (_, _) => SaveSetting("budget", BudgetBox.SelectedIndex.ToString());
+        BudgetBox.SelectionChanged += (_, _) => { SaveSetting("budget", BudgetBox.SelectedIndex.ToString()); HdBox.IsEnabled = FullDetail; };
+        HdBox.IsEnabled = FullDetail;
+        BigModelButton.Click += async (_, _) => await BigModel();
+        OpenModelButton.Click += async (_, _) => await OpenModel();
         Opened += async (_, _) => { if (Directory.Exists(SourceBox.Text)) await LoadList(); };
     }
 
@@ -96,7 +115,7 @@ public partial class MainWindow : Window
     {
         Src2K.IsChecked = !aew;
         SrcAEW.IsChecked = aew;
-        SourceBox.Watermark = aew ? "AEW's paks folder (…\\CUSA34641\\elite\\content\\paks)" : "Folder with the 2K26 wrestlers";
+        SourceBox.Watermark = aew ? "AEW's paks folder (…\\CUSA34641\\elite\\content\\paks)" : "Folder with the 2K wrestlers (2K19 - 2K26)";
         SourceBox.Text = LoadSetting(aew ? "aewPath" : "2kPath") ?? "";
         SaveSetting("source", aew ? "aew" : "2k26");
         all.Clear();
@@ -114,10 +133,87 @@ public partial class MainWindow : Window
         FemaleChip.IsChecked = female;
     }
 
+    /// <summary>one model file (people's request 2026-11-10: open just the wrestler they want, no game needed)</summary>
+    async Task OpenModel()
+    {
+        var r = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open one 2K wrestler model", AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("2K models (.mcd, .mdl, .pac)") { Patterns = new[] { "*.mcd", "*.mdl", "*.pac" } },
+                new FilePickerFileType("All files") { Patterns = new[] { "*" } },
+            },
+        });
+        string? p = r.Count > 0 ? r[0].TryGetLocalPath() : null;
+        if (p == null) return;
+        SetSource(false);
+        SourceBox.Text = p;
+        await LoadList();
+    }
+
+    /// <summary>the big-model DLL: what it is, whether it is in the game folder and was used, install / remove</summary>
+    async Task BigModel()
+    {
+        string game = GameBox.Text?.Trim().Trim('"') ?? "";
+        if (!File.Exists(Path.Combine(game, "svr2011.exe"))) { Status("Choose the SvR 2011 game folder first (the one with svr2011.exe)."); return; }
+        JsonElement st = default;
+        await Work("Checking the big-model DLL…", async ct => st = await Engine.Run(python, new() { ["command"] = "bigmodel", ["game"] = game, ["action"] = "status" }, null, ct));
+        if (st.ValueKind != JsonValueKind.Object) return;
+        string state = st.GetProperty("installed").GetString() ?? "none";
+        string text =
+            "PortIT's big-model DLL (xinput1_4.dll beside svr2011.exe) gives every wrestler 4096 KB of model memory instead " +
+            "of the game's 768 KB. It is needed for \"Full detail + HD texture pack\" ports: without it they are cut down to " +
+            "fit, and a full-detail model can crash the match. Game 2.1.6 or newer.\n\n" +
+            "In this game folder: " + state switch
+            {
+                "portit" => "installed.",
+                "other" => "another xinput1_4.dll is there (another mod). Installing keeps it as xinput1_4.dll.before_portit.",
+                _ => "not installed.",
+            } +
+            (st.TryGetProperty("note", out var n) && n.GetString() is { Length: > 0 } note ? "\nLast game start: " + note + "." : "") +
+            (st.TryGetProperty("version", out var v) && v.GetString() is { Length: > 0 } ver ? "\nGame: " + ver + "." : "") +
+            "\n\nClose the game before installing or removing.";
+        string? pick = await Choose3(text, state == "portit" ? "Reinstall" : "Install", state == "portit" ? "Remove" : null);
+        if (pick == null) return;
+        await Work(pick == "Remove" ? "Removing the big-model DLL…" : "Installing the big-model DLL…", async ct =>
+        {
+            var r = await Engine.Run(python, new() { ["command"] = "bigmodel", ["game"] = game, ["action"] = pick == "Remove" ? "remove" : "install" }, null, ct);
+            Status(pick == "Remove" ? "Big-model DLL removed." :
+                   "Big-model DLL installed. Start the game once: then PortIT's full-detail ports use the bigger model memory.");
+        });
+    }
+
+    async Task<string?> Choose3(string text, string main, string? second)
+    {
+        var a = new Button { Content = main, Classes = { "accent" } };
+        var close = new Button { Content = "Close" };
+        var row = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 8, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right };
+        row.Children.Add(close);
+        Button? b = null;
+        if (second != null) { b = new Button { Content = second }; row.Children.Add(b); }
+        row.Children.Add(a);
+        var dlg = new Window
+        {
+            Title = "PortIT - big-model DLL", Width = 560, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new StackPanel
+            {
+                Margin = new Avalonia.Thickness(20), Spacing = 16,
+                Children = { new TextBlock { Text = text, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, row },
+            },
+        };
+        string? result = null;
+        a.Click += (_, _) => { result = main; dlg.Close(); };
+        if (b != null) b.Click += (_, _) => { result = second; dlg.Close(); };
+        close.Click += (_, _) => dlg.Close();
+        await dlg.ShowDialog(this);
+        return result;
+    }
+
     async Task LoadList()
     {
         string path = SourceBox.Text?.Trim().Trim('"') ?? "";
-        if (!Directory.Exists(path)) { Status("Choose a source folder first."); return; }
+        if (!Directory.Exists(path) && !(File.Exists(path) && Source == "2k26")) { Status("Choose a source folder or a model file first."); return; }
         SaveSetting(Source == "aew" ? "aewPath" : "2kPath", path);
         await Work("Reading the wrestlers…", async ct =>
         {
@@ -234,6 +330,22 @@ public partial class MainWindow : Window
             return;
         }
         SaveSetting("game", game);
+        if (FullDetail && !File.Exists(Path.Combine(game, "xinput1_4.dll")))
+        {
+            // (people's request 2026-11-10: tell them the DLL is needed for the better model and textures, and put it in)
+            string? pick = await Choose3("\"Full detail + HD texture pack\" needs PortIT's big-model DLL in the game folder " +
+                                         "(xinput1_4.dll): it gives each wrestler 4096 KB of model memory instead of 768 KB. " +
+                                         "Without it this port is cut down to the game's normal size.\n\nInstall it now? " +
+                                         "(Close the game first. Start the game once after installing, then port again for the full model.)",
+                                         "Install", null);
+            if (pick == "Install")
+                await Work("Installing the big-model DLL…", async ct =>
+                {
+                    await Engine.Run(python, new() { ["command"] = "bigmodel", ["game"] = game, ["action"] = "install" }, null, ct);
+                    Status("Big-model DLL installed. Start the game once, then port again for the full-detail model.");
+                });
+            return;
+        }
         string outDir = OutBox.Text?.Trim().Trim('"') ?? "";
         SaveSetting("out", outDir);
         var req = Request("port");
@@ -241,6 +353,7 @@ public partial class MainWindow : Window
         req["out"] = outDir;
         req["female"] = FemaleChip.IsChecked == true;
         req["budget"] = (BudgetBox.SelectedItem as Budget)?.Pages ?? 190;
+        req["hd_size"] = (HdBox.SelectedItem as HdSize)?.Width ?? 4096;
         req["face"] = FaceCheck.IsChecked == true;
         req["mod_id"] = (ModIdBox.Text ?? "").Trim();
         req["mod_name"] = (ModNameBox.Text ?? "").Trim();

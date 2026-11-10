@@ -8,13 +8,13 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
-    <Version>1.0.1</Version>
+    <Version>1.1.0</Version>
     <ApplicationIcon>Assets/portit.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets/portit.ico;Assets/portit_256.png" />
     <!-- the Python engine (readers, converter, the bundled SvR builder) ships beside PortIT.exe -->
-    <Content Include="Engine\**\*.py;Engine\**\*.json;Engine\**\*.exe;Engine\cake\*.dll" Exclude="Engine\**\__pycache__\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Engine\**\*.py;Engine\**\*.json;Engine\**\*.exe;Engine\cake\*.dll;Engine\bigmodel\*" Exclude="Engine\**\__pycache__\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="Avalonia" Version="11.3.20" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.20" />
     <PackageReference Include="Avalonia.Headless" Version="11.3.20" />

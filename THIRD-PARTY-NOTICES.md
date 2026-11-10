@@ -67,7 +67,8 @@ secret; `ddshash.zig` (the helper it replaced in 1.0.1) is kept for reference.
 
 ## The big-model DLL (`bigmodel_dll`, the optional `xinput1_4.dll`)
 
-SUL's own code (same license as PortIT). It is built with
+SUL's own code (same license as PortIT). Since PortIT 1.1.0 it also ships inside PortIT (`app/Engine/bigmodel`, with
+MinHook's license beside it) so the app can install it. It is built with
 [MinHook](https://github.com/TsudaKageyu/minhook) 1.3.4 (`bigmodel_dll/minhook`), BSD 2-Clause License,
 Copyright (C) 2009-2017 Tsuda Kageyu; its full license is in `bigmodel_dll/minhook/LICENSE.txt`.
 
@@ -85,7 +86,8 @@ To run PortIT from source you need Python 3.12 with NumPy and Pillow yourself.
 ## Not included
 
 - **No game files** are included. PortIT reads your own copies of the games.
-- **Oodle** (`oo2core_9_win64.dll`, RAD Game Tools / Epic Games) is proprietary and is not part of PortIT.
+- **Oodle** (`oo2core_*_win64.dll`, RAD Game Tools / Epic Games) is proprietary and is not part of PortIT. When a
+  WWE 2K19 / 2K20 pack is Oodle-packed, PortIT loads the copy that comes with the user's own WWE 2K game install.
 
 ## Trademarks
 

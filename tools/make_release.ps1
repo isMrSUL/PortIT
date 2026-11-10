@@ -38,13 +38,13 @@ New-Item -ItemType Directory -Force (Join-Path $dist 'docs') | Out-Null
 Copy-Item (Join-Path $root 'docs\*.md') (Join-Path $dist 'docs')
 Copy-Item (Join-Path $root 'docs\images') (Join-Path $dist 'docs\images') -Recurse
 @"
-PortIT $version - Port WWE 2K26 and AEW Fight Forever wrestlers into WWE SmackDown vs. Raw 2011 (PC port)
+PortIT $version - Port WWE 2K19 - 2K26 and AEW Fight Forever wrestlers into WWE SmackDown vs. Raw 2011 (PC port)
 by SUL (MrSUL) - https://github.com/isMrSUL/PortIT
 
 1. Start PortIT.exe (nothing to install). If Windows says "Windows protected your PC": More info -> Run anyway.
 2. Read docs\USER_GUIDE.md - it explains every step and every choice.
-3. For full-detail wrestlers you also need the big-model DLL (PortIT-BigModel-DLL-$version.zip on the same
-   download page): see "The big-model DLL" in the user guide.
+3. For full-detail wrestlers you also need the big-model DLL: click "Big-model DLL..." in PortIT (next to Browse)
+   and Install. (It is also on the download page as PortIT-BigModel-DLL-$version.zip.)
 
 Keep all the files together: PortIT.exe needs the Engine folder next to it.
 PortIT is free and open source (MIT License, see LICENSE). If you share a changed version, keep the LICENSE file

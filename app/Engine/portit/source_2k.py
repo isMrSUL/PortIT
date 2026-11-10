@@ -1,4 +1,4 @@
-"""WWE 2K26 (also 2K25-era .mcd v0x2F) wrestler -> PortIT's neutral source model.
+"""WWE 2K26 wrestler -> PortIT's neutral source model (also 2K20 - 2K25: .mdl / .mcd, readers/mcd_parse.py).
 
 A wrestler folder holds BaseModel/baseModel.mcd and one or more attire folders (<x>/Attire.mcd or <id>_Attire.mcd),
 each with Materials/*.jmtl and Textures/*.dds. Textures are linked to meshes through the .jmtl texture hashes
@@ -45,11 +45,22 @@ def jmtl_info(path):
     return shader, vals
 
 
+MODEL_EXT = ('.mcd', '.mdl')
+
+
+def is_base_model(name):
+    """baseModel.mcd (2K25 / 2K26) or baseModel.mdl (2K20 - 2K24)"""
+    return name.lower() in ('basemodel.mcd', 'basemodel.mdl')
+
+
 def find_wrestler(folder):
-    """-> (base .mcd path, [attire .mcd paths])"""
-    mcds = [p for p in glob.glob(os.path.join(folder, '**', '*.mcd'), recursive=True)]
-    base = [p for p in mcds if os.path.basename(p).lower() == 'basemodel.mcd']
-    att = [p for p in mcds if p not in base and os.sep + 'textures' + os.sep not in p.lower()]
+    """-> (base model path, [attire model paths]); .mcd (2K25 / 2K26) or .mdl (2K20 - 2K24, PortIT 2026-11-10)
+    (hair_<n>.mdl: a 2K19-era hair slot model, not an attire)"""
+    mcds = [p for p in glob.glob(os.path.join(folder, '**', '*'), recursive=True)
+            if p.lower().endswith(MODEL_EXT) and os.path.isfile(p)]
+    base = [p for p in mcds if is_base_model(os.path.basename(p))]
+    att = [p for p in mcds if p not in base and os.sep + 'textures' + os.sep not in p.lower()
+           and not os.path.basename(p).lower().startswith('hair_')]
     return (base[0] if base else None), sorted(att)
 
 
@@ -119,7 +130,8 @@ def load_mcd(path, tex, female=False):
         cand = [s for s in jmtls if re.sub(r'_alpha$', '', s) == key] or \
                [s for s in jmtls if s.startswith(key) or key.endswith(re.sub(r'_alpha$', '', s))] or \
                [s for s in jmtls if re.sub(r'_alpha$', '', s) in key]
-        jstem = sorted(cand, key=len)[0] if cand else key
+        # (no name match: the material the mesh's triangles use - older mods name meshes freely, PortIT 2026-11-10)
+        jstem = sorted(cand, key=len)[0] if cand else (mb.get('object') or key).lower()
         obj = next((o for o in objects if o.lower() == jstem), jstem)
         stem = re.sub(r'_alpha$', '', jstem)
         jm = jmtls.get(jstem, os.path.join(mdir, 'Materials', jstem + '.jmtl'))
@@ -150,6 +162,10 @@ def load_mcd(path, tex, female=False):
         # (S_<x> beside M_<x>: 2K's cloth-physics copy, never drawn - shown as left out, as rock_fbx leaves it out)
         if n.startswith('s_') and 'm_' + n[2:] in names:
             me.variant = True
+        # (the see-through eye layer and empty placeholders - the port leaves them out (port_2k: R.DROP_MESHES); drawn
+        #  untextured they covered the eyes in white: 2K23 Alundra Blayze, 2K24 Brooks Jensen / Sting, 2026-11-10)
+        if 'eyeshadow' in n or n.startswith(('m_lambert', 'm_polysurface', 'lambert', 'polysurface')):
+            me.variant = True
     bones = [{'name': b['name'], 'parent': b['parent'], 'world': b['world']} for b in m.bones]
     return bones, meshes
 
@@ -158,7 +174,7 @@ def load(folder, attire=None):
     """-> dict(game, name, bones (merged by name), meshes (base + attire, each with its own bone list))"""
     base, attires = find_wrestler(folder)
     if not base:
-        raise ValueError('No BaseModel/baseModel.mcd under %s' % folder)
+        raise ValueError('No BaseModel/baseModel.mcd (or .mdl) under %s' % folder)
     tex = Textures(folder)
     bones, meshes = load_mcd(base, tex)
     for me in meshes:
@@ -171,5 +187,33 @@ def load(folder, attire=None):
         meshes += am
     else:
         att = None
+    # (2K26 face paint and an attire's own base textures, as the port lays them on - portit/face_paint.py; the
+    #  preview showed Ultimate Warrior 2017 without his paint, 2026-11-10)
+    if att:
+        try:
+            import face_paint
+            out = os.path.join(os.environ.get('LOCALAPPDATA', folder), 'PortIT', 'previews', '_facepaint',
+                               re.sub(r'[^A-Za-z0-9_.-]+', '_', os.path.basename(os.path.normpath(folder))))
+            first = face_paint.prepare(folder, os.path.relpath(os.path.dirname(att), folder), out, log=lambda *a: None,
+                                       normals=False)
+        except (OSError, ValueError):
+            first = []
+        if first:
+            def swap(path_or_stem):
+                stem = os.path.splitext(os.path.basename(path_or_stem))[0].lower()
+                for d in first:
+                    for f in os.listdir(d):
+                        if os.path.splitext(f)[0].lower() == stem:
+                            return os.path.join(d, f)
+                return None
+            for me in meshes:
+                tx = dict(me.textures or {})
+                for role, p in list(tx.items()):
+                    tx[role] = swap(p) or p
+                if 'color' not in tx and swap(me.name + '_color'):
+                    tx['color'] = swap(me.name + '_color')
+                me.textures = tx
+    import mcd_parse
     return {'game': '2k26', 'name': os.path.basename(os.path.normpath(folder)), 'bones': bones, 'meshes': meshes,
-            'attire': att, 'attires': attires, 'space': '2k'}
+            'attire': att, 'attires': attires, 'space': '2k',
+            'female': 'female' in folder.lower() or mcd_parse.looks_female(base)}
