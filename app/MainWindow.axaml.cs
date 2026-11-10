@@ -136,20 +136,16 @@ public partial class MainWindow : Window
     /// <summary>one model file (people's request 2026-11-10: open just the wrestler they want, no game needed)</summary>
     async Task OpenModel()
     {
-        var r = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Open one 2K wrestler model", AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("2K models (.mcd, .mdl, .pac)") { Patterns = new[] { "*.mcd", "*.mdl", "*.pac" } },
-                new FilePickerFileType("All files") { Patterns = new[] { "*" } },
-            },
-        });
-        string? p = r.Count > 0 ? r[0].TryGetLocalPath() : null;
+        // (a model folder: one wrestler's mod folder - BaseModel + its attire folder(s), e.g.
+        //  1298_Headshrinker_Fatu_WM9_2K25 - or a folder holding such folders / chNNNNN.pac packs. Loaded at once and,
+        //  with one wrestler in it, chosen at once so the preview shows; the user's request 2026-11-10)
+        string? p = await PickFolder("Open a model folder (a wrestler's folder with BaseModel, or a folder of 2K mods / .pac packs)");
         if (p == null) return;
         SetSource(false);
         SourceBox.Text = p;
+        SearchBox.Text = "";
         await LoadList();
+        if (shown.Count == 1) WrestlerList.SelectedItem = shown[0];
     }
 
     /// <summary>the big-model DLL: what it is, whether it is in the game folder and was used, install / remove</summary>

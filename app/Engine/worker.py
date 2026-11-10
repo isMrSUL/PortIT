@@ -291,7 +291,7 @@ def manifest(mod_id, name, base, female, pac=None):
     """the superstar mod's manifest.txt (docs/SVRMOD_FORMAT.md 3.1); pac: the built ch.pac - over the old 192-page
     window it says needs=2.1.6 (the big-model memory), as the Mod Maker and its converters write it"""
     lines = ['type=superstar', 'id=%s' % mod_id, 'name=%s' % name[:31], 'short=%s' % name[:31], 'base=%s' % base,
-             'author=', 'version=1.0', 'made_with=PortIT 1.1.0', 'ratings=80,80,80,80,80,80,80', 'call=48']
+             'author=', 'version=1.0', 'made_with=PortIT 1.1.1', 'ratings=80,80,80,80,80,80,80', 'call=48']
     if pac:
         try:
             import model_budget

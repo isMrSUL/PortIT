@@ -46,8 +46,8 @@
           <Grid Grid.Row="2" ColumnDefinitions="*,6,Auto,6,Auto,6,Auto" Margin="0,0,0,8">
             <TextBox x:Name="SourceBox" Watermark="Folder with the 2K wrestlers" />
             <Button Grid.Column="2" x:Name="SourceBrowse" Content="…" ToolTip.Tip="Choose a folder: a 2K game, a mods folder or one wrestler's folder" />
-            <Button Grid.Column="4" x:Name="OpenModelButton" Content="Model…"
-                    ToolTip.Tip="Open one model file: a wrestler's baseModel / attire .mcd or .mdl (2K20 - 2K26), or a chNNNN.pac (2K19 - 2K22)" />
+            <Button Grid.Column="4" x:Name="OpenModelButton" Content="Model folder…"
+                    ToolTip.Tip="Open a model folder: one wrestler's folder (with BaseModel and its attire), or a folder of 2K mods / chNNNNN.pac packs - it opens at once" />
             <Button Grid.Column="6" x:Name="LoadButton" Content="Load" />
           </Grid>
           <TextBox Grid.Row="3" x:Name="SearchBox" Watermark="Find a wrestler" Margin="0,0,0,10" />

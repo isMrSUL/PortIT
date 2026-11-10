@@ -39,7 +39,7 @@ This guide goes step by step. If something goes wrong, see [When something goes 
     | 2K20, 2K22, 2K23, 2K24 | the same, with `.mdl` files instead of `.mcd` |
     | 2K19 – 2K22 packs | `chNNNNN.pac` files (one pack = one look). PortIT unpacks a pack into a cache when you open it. |
 
-    Point PortIT at a folder of such mods or at one wrestler's folder, or open **one model file** with **Model…**.
+    Point PortIT at a folder of such mods, or open one wrestler's model folder with **Model folder…**.
   - **AEW Fight Forever** (PS4). You need the game's files from your PS4 copy, unpacked to a folder. PortIT reads
     the `paks` folder inside it: `...\CUSA34641\elite\content\paks`.
 - About **5 GB of free disk space** for PortIT's work files (2K26 wrestlers are unpacked into a cache the first time
@@ -101,7 +101,7 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 | Part | What it is for |
 |---|---|
 | **SvR game** (top) | your SvR 2011 game folder (the one with `pac\ch`). Use **Browse…** to pick it. **Big-model DLL…** installs or checks the [big-model DLL](#the-big-model-dll-for-full-detail). |
-| **Source** (left) | where the wrestlers come from: **WWE 2K19 - 2K26** or **AEW Fight Forever**, its folder (**…**), one model file (**Model…**), **Load**, a search box and the list of wrestlers. |
+| **Source** (left) | where the wrestlers come from: **WWE 2K19 - 2K26** or **AEW Fight Forever**, its folder (**…**), one wrestler's model folder (**Model folder…**), **Load**, a search box and the list of wrestlers. |
 | **Preview** (middle) | the wrestler as he or she looks in the source game, from the front and the side. After porting it shows the built SvR model. |
 | **Meshes** (middle, bottom) | every part of the model (body, head, eyes, hair, each piece of clothing). Untick a piece to leave it out. |
 | **Port** (right) | the choices for the port, the **Port to SvR 2011** button, the install buttons and the port report. |
@@ -115,8 +115,10 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
    - WWE 2K: the WWE 2K26 game folder, a folder of 2K wrestler mods (2K19 – 2K26), or one wrestler's folder;
    - AEW: the `paks` folder (`...\CUSA34641\elite\content\paks`).
 
-   **Only want one wrestler?** Click **Model…** instead and open that wrestler's model file: its
-   `baseModel.mcd` / `.mdl` (or an attire's), or a `chNNNNN.pac`. No game install is needed.
+   **Only want one wrestler?** Click **Model folder…** instead and choose that wrestler's model folder - the one
+   with `BaseModel` and the attire folder inside (for example `1298_Headshrinker_Fatu_WM9_2K25`), or a folder with
+   `chNNNNN.pac` packs. It opens at once: with one wrestler inside, PortIT picks him and shows the preview, no
+   **Load** needed. No game install is needed.
 4. Click **Load**. The list fills with the wrestlers. WWE 2K26 has more than 550; type in **Find a wrestler** to
    search. A number after the name (for example *CM Punk #312*) tells versions of the same wrestler apart.
 5. **Click a wrestler.** PortIT reads the model (the first time, a 2K26 wrestler takes a few seconds to unpack) and
@@ -247,7 +249,7 @@ When you share a port, please share both files.
 | Problem | What to do |
 |---|---|
 | **"The SvR game folder must have pac\ch"** | choose the game folder itself (the one with `pac`, `Mods`, `svr2011.exe`), not a sub-folder. |
-| **The wrestler list stays empty** | check the source folder: for 2K the 2K26 game folder, a folder of 2K wrestler mods or one wrestler's folder (or open one model file with **Model…**); for AEW the `paks` folder. Then click **Load** again. |
+| **The wrestler list stays empty** | check the source folder: for 2K the 2K26 game folder, a folder of 2K wrestler mods or one wrestler's folder (or use **Model folder…**); for AEW the `paks` folder. Then click **Load** again. |
 | **"…packed with Oodle and no WWE 2K game with its oo2core file was found"** | some WWE 2K19 / 2K20 packs are packed with Oodle. PortIT uses the `oo2core_*_win64.dll` of your own WWE 2K19 / 2K20 / 2K24 / 2K25 / 2K26 install (it is never part of PortIT). Install one of these games, or set the environment variable `PORTIT_OODLE_DLL` to the full path of your `oo2core_*_win64.dll`. |
 | **The HD texture pack folder got very big** | choose **HD texture size: 4K** (or 2K) and port again: installing again replaces that wrestler's pack files. Before 1.1.0, porting a wrestler again could leave old pack files behind: in `Texture Packs\<pack>`, delete the `<mod id>_hd_…dds` files of mods you removed or ported again (then install those mods again). |
 | **"Importing the numpy C-extensions failed"** or **"PortIT's Python could not load NumPy / Pillow"** | Windows or your antivirus blocked or removed one of PortIT's files. Use PortIT **1.0.1 or newer** (it unblocks its own files on start). Then: right-click the downloaded zip > **Properties** > tick **Unblock** > **OK**, unzip it again with Windows' own **Extract All** into a new folder, and run PortIT.exe from there. If it still fails, your antivirus probably quarantined a file in `Engine\python` (often `numpy.libs\libscipy_openblas64_….dll`): restore it and add the PortIT folder as an exception. |

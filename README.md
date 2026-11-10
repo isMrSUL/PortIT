@@ -23,9 +23,9 @@
    **`PortIT.exe`** (no install: .NET and Python are inside).
 2. Choose your SvR 2011 game folder, then click **Big-model DLL…** and **Install** (needed for full-detail models and
    their HD textures; [how and why](docs/USER_GUIDE.md#the-big-model-dll-for-full-detail)). Start the game once.
-3. Choose your source - the WWE 2K26 game folder, a folder of 2K mods (2K19 – 2K26), one model file (**Model…**) or
-   AEW's `paks` folder - click **Load**, pick a wrestler, choose **Full detail + HD texture pack** and click
-   **Port to SvR 2011**.
+3. Choose your source - the WWE 2K26 game folder, a folder of 2K mods (2K19 – 2K26), one wrestler's model folder
+   (**Model folder…**: it opens at once) or AEW's `paks` folder - click **Load**, pick a wrestler, choose
+   **Full detail + HD texture pack** and click **Port to SvR 2011**.
 4. **Install to game…** (a new superstar) or **Install as attire…** (a new look for a superstar the game has).
 
 Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**.
@@ -34,9 +34,9 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
 
 - **Reads the wrestlers straight from your own games**
   - **WWE 2K26**: point it at the WWE 2K26 game folder (all wrestlers are read from its archives).
-  - **WWE 2K19 – 2K26 mods**: a folder of 2K wrestler mods, one wrestler's folder, or one model file - `.mcd` (2K25,
-    2K26), `.mdl` (2K20, 2K22, 2K23, 2K24) or a `chNNNNN.pac` pack (2K19 – 2K22, the older Yuke's format). No game
-    install needed.
+  - **WWE 2K19 – 2K26 mods**: a folder of 2K wrestler mods, or one wrestler's model folder (**Model folder…**) -
+    `.mcd` (2K25, 2K26), `.mdl` (2K20, 2K22, 2K23, 2K24) or `chNNNNN.pac` packs (2K19 – 2K22, the older Yuke's
+    format). No game install needed.
   - **AEW Fight Forever**: the PS4 dump's `...\CUSA34641\elite\content\paks` folder.
 - **Preview before porting** — see the wrestler as he or she is, untick clothes, gear or hair to leave them out, and
   draw the preview again with that edit.
