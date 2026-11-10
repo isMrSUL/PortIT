@@ -208,9 +208,12 @@ the next free attire, or asks you to switch one off.
 With *Full detail + HD texture pack*, the full-size textures go into a **texture pack**:
 
 - if your game already has a texture pack switched on, PortIT puts them there;
-- if not, it makes a pack called **PortIT HD**. Switch it on in the **launcher**, in the **Texture packs** list.
+- if not, it makes a pack called **PortIT HD** and switches it on for you (the same setting as the **launcher**'s
+  **Texture packs** list; your old settings file is kept as `svr2011.toml.before_portit`).
 
-Without the texture pack switched on, the wrestler still works, with smaller textures.
+Without the texture pack switched on, the wrestler still works, but with the small textures from the model file -
+they look smudged and blurry. If an HD port looks blurry, check that the pack is ticked in the launcher's
+**Texture packs** list.
 
 ## 7. Share it, or edit it in the Mod Maker (.svrmod)
 

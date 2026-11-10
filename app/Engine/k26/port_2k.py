@@ -39,6 +39,7 @@ def setup(char, attire, female=False, full=False):
     probe = os.path.join(R.os.environ.get('PORTIT_WORK', HERE), '_probe')
     rock_fbx.DROP_MESHES = {'M_Teeth', 'M_Tongue'} | LEAVE_OUT   # (the mouth bag read too, as rock_model.build reads it)
     meshes, bones = rock_fbx.build(char, attire, probe, want_bones=True)
+    solid_alpha_gear(meshes, probe)
     rock_fbx.NOT_GEAR = {'M_Body', 'M_Head', 'M_EYE', 'M_Head_Caruncle', 'M_TransB_eyelash', 'M_transB_eyelash',
                          'M_Teeth', 'M_Tongue', 'M_MouthBag'} | {m['name'] for m in meshes if is_card(m)}
     # (the user's left-out clothes are dropped before the skin-under-gear test: the skin under them stays)
@@ -51,7 +52,9 @@ def setup(char, attire, female=False, full=False):
     if bag is not None:
         c0 = bag['verts'].mean(0)
         for m in meshes:
-            if m is bag or m['texture'] or m['name'] in R.DROP_MESHES or len(m['verts']) > 8000:
+            # (hair / beard cards are never a mouth part: their colour comes from the rai map, so they looked
+            #  'untextured' - Punk's, Abyss's and AJ Styles' M_Combinations beards were left out, 2026-11-10)
+            if m is bag or m['texture'] or m['name'] in R.DROP_MESHES or len(m['verts']) > 8000 or is_card(m):
                 continue
             if np.linalg.norm(m['verts'].mean(0) - c0) < 4.0:
                 R.DROP_MESHES.add(m['name'])
@@ -75,30 +78,42 @@ def setup(char, attire, female=False, full=False):
              'eyelash': (1792, 896, 256, 128), 'mouthbag': R.CELLS['mouthbag']}
     rest = [t for t in tnames if t not in cells]
     rest.sort(key=lambda t: -sum(len(m['verts']) for m in tnames[t]))
-    free = list(SHEET_FREE)
-    for t in rest:
-        size = 256 if sum(len(m['verts']) for m in tnames[t]) > 1500 or is_card(tnames[t][0]) else 128
-        while True:
-            fit = None
-            for k, (x, y, w, h) in enumerate(free):
-                if w >= size and h >= min(size, h):
-                    fit = k
+    base_cells = dict(cells)
+    # (many gear parts - Rey Mysterio 2008's 13: "no room in the texture sheet for l_wrist", people's knee pads too,
+    #  2026-11-10 - the parts are laid out again at half their size, then a quarter: every part gets a cell)
+    for shrink in range(4):
+        cells, free, short = dict(base_cells), list(SHEET_FREE), None
+        for t in rest:
+            size = (256 if sum(len(m['verts']) for m in tnames[t]) > 1500 or is_card(tnames[t][0]) else 128) >> shrink
+            size = max(32, size)
+            while True:
+                fit = None
+                for k, (x, y, w, h) in enumerate(free):
+                    if w >= size and h >= min(size, h):
+                        fit = k
+                        break
+                if fit is not None or size <= 32:
                     break
-            if fit is not None or size <= 32:
+                size //= 2
+            if fit is None:
+                if full:        # (the full route lays the sheet out again: full_port.layout - a placeholder here)
+                    cells[t] = (0, 0, 32, 32)
+                    continue
+                short = t
                 break
-            size //= 2
-        if fit is None:
-            if full:        # (the full route lays the sheet out again: full_port.layout - a placeholder here)
-                cells[t] = (0, 0, 32, 32)
-                continue
-            raise RuntimeError('no room in the texture sheet for ' + t)
-        x, y, w, h = free.pop(fit)
-        ch = min(size, h)
-        cells[t] = (x, y, size, ch)
-        if w - size > 0:
-            free.insert(fit, (x + size, y, w - size, h))
-        if h - ch > 0:
-            free.append((x, y + ch, size, h - ch))
+            x, y, w, h = free.pop(fit)
+            ch = min(size, h)
+            cells[t] = (x, y, size, ch)
+            if w - size > 0:
+                free.insert(fit, (x + size, y, w - size, h))
+            if h - ch > 0:
+                free.append((x, y + ch, size, h - ch))
+        if short is None:
+            if shrink:
+                print('texture sheet: %d gear parts - laid out at 1/%d size to fit' % (len(rest), 1 << shrink))
+            break
+    else:
+        raise RuntimeError('no room in the texture sheet for ' + short)
     R.CELLS = cells
     R.CUTOUT = {t for t, ms in tnames.items() if is_card(ms[0])}
     R.SHINE = {'head': (10, 1 / 16), 'body': (10, 1 / 16), 'eye': (52, 0), 'eyelash': (0, 0), 'eye_caruncle': (40, 0)}
@@ -126,9 +141,38 @@ def setup(char, attire, female=False, full=False):
     return R, info
 
 
+SOLID_ALPHA = set()   # (gear materials named *_alpha whose colour map is solid: normal gear, not cards - see setup)
+SOLID_SHARE = 0.90    # (an _alpha gear map at least this solid (alpha >= 128) is drawn solid, skin under it hidden)
+
+
 def is_card(m):
     mat = m['material'].lower()
-    return mat.endswith('_alpha') or any(mat.startswith(c) for c in CARD_MATS)
+    if any(mat.startswith(c) for c in CARD_MATS):
+        return True
+    return mat.endswith('_alpha') and mat not in SOLID_ALPHA
+
+
+def solid_alpha_gear(meshes, probe, log=print):
+    """gear whose material ends in _alpha but whose colour map is (almost) all solid -> SOLID_ALPHA.
+    2K marks a material _alpha when its map may have holes; PortIT drew every one as a see-through, double-sided hair
+    card that never hides the skin under it - kneepads came out see-through and entrance jackets let the skin and the
+    wrist tape poke through (users' report 2026-11-10). Measured: Ultimate Warrior's kneepads 100 % solid, Abyss',
+    Ava's, Harley Race's, Sting's jackets 96 - 99 %; real cut-outs - glasses 59 %, Alexa Bliss' u_acce 68 %."""
+    from PIL import Image
+    SOLID_ALPHA.clear()
+    for m in meshes:
+        mat = m['material'].lower()
+        if not mat.endswith('_alpha') or any(mat.startswith(c) for c in CARD_MATS) or not m.get('texture'):
+            continue
+        try:
+            a = np.asarray(Image.open(os.path.join(probe, m['texture'])).convert('RGBA').getchannel('A'))
+        except OSError:
+            continue
+        share = float((a >= 128).mean())
+        if share >= SOLID_SHARE:
+            SOLID_ALPHA.add(mat)
+            log('%s: its map is %.0f%% solid - drawn as solid gear (the skin under it hidden), not as a see-through card'
+                % (m['name'], 100 * share))
 
 
 def attire_dir(char, attire):
@@ -182,9 +226,14 @@ def targets(info, scale):
     for n, v in info['meshes'].items():
         if n not in T and n.lower() not in ('m_eye',) and 'eyelash' not in n.lower():
             T[n] = max(200, int(gear_room * v / max(gear_total, 1)))
+            # (head gear keeps its shape: Rey Mysterio 1999's mask got 387 of its 1,535 points beside his 8,290-point
+            #  overalls - its round top came out flat panels and a point, 2026-11-10)
+            if any(k in n.lower() for k in HEAD_GEAR):
+                T[n] = max(T[n], min(v, 1100))
     return {n: max(150, int(t * scale)) for n, t in T.items()}
 
 
+HEAD_GEAR = ('mask', 'hood', 'hat', 'helmet', 'bandana', 'headband', 'balaclava')
 FULL_BUDGET = 1500   # (the big-model memory, game 2.1.6+: full detail + a texture pack - full_port.py)
 
 

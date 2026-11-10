@@ -393,7 +393,9 @@ public partial class MainWindow : Window
             if (r.TryGetProperty("pack", out var pk))
             {
                 msg += "  ·  HD textures: " + pk.GetString();
-                if (r.TryGetProperty("pack_enabled", out var pe) && !pe.GetBoolean())
+                if (r.TryGetProperty("pack_turned_on", out var pt) && pt.GetBoolean())
+                    msg += "  (PortIT turned on the texture pack \"PortIT HD\" for you)";
+                else if (r.TryGetProperty("pack_enabled", out var pe) && !pe.GetBoolean())
                     msg += "  (turn on the texture pack \"PortIT HD\" in the launcher's Texture packs list)";
             }
             Status(msg);
@@ -427,7 +429,9 @@ public partial class MainWindow : Window
             if (r.TryGetProperty("pack", out var pk))
             {
                 msg += "  ·  HD textures: " + pk.GetString();
-                if (r.TryGetProperty("pack_enabled", out var pe) && !pe.GetBoolean())
+                if (r.TryGetProperty("pack_turned_on", out var pt) && pt.GetBoolean())
+                    msg += "  (PortIT turned on the texture pack \"PortIT HD\" for you)";
+                else if (r.TryGetProperty("pack_enabled", out var pe) && !pe.GetBoolean())
                     msg += "  (turn on the texture pack \"PortIT HD\" in the launcher's Texture packs list)";
             }
             Status(msg);

@@ -29,8 +29,51 @@ HIDE_OUT_CM, HIDE_IN_CM = 4.0, 8.0   # skin under the gear (out) or poking throu
 SKIP_VARIANTS = True                 # PortIT: 2K's alternate looks (M_Outfit_strapsDown next to M_Outfit) left out
 
 
-def texture_for(material, folders, outdir, extra=None):
-    """extra: the colour texture the mod's .mtls names for this material (2K20 - 2K24 mods; tried last)"""
+TEX_ALIAS = {}   # (material (lower case) -> {'_color': dds, '_nrm': dds} from its own .jmtl hashes - rock_model.find_tex
+#                   uses it when no texture carries the material's name; filled by build())
+
+
+def material_alias(char, folders, mat):
+    """a 2K26 material's textures through its own .jmtl hashes (source_2k.Textures, the archive's whole path and the
+    shared Characters/_Shared textures): Batista's u_acce wears pierce_color, Umaga's ula _Shared/ula_color - their
+    names never matched, so such pieces came out untextured (black / grey), the users' report 2026-11-10"""
+    import source_2k
+    key = re.sub(r'(?i):skinned$', '', mat).lower()
+    if key in TEX_ALIAS:
+        return TEX_ALIAS[key]
+    if '_tex' not in TEX_ALIAS.get('', {}):
+        TEX_ALIAS[''] = {'_tex': source_2k.Textures(char)}
+    tex = TEX_ALIAS['']['_tex']
+    out = {}
+    # (then the wrestler's other attires - an attire holding only its model wears a sibling's materials: Tama Tonga's
+    #  FacePaint, its ula in Default_Attire - and the shared ones, Characters/_Shared; 2026-11-10)
+    others = sorted((os.path.join(char, d) for d in os.listdir(char) if os.path.isdir(os.path.join(char, d))
+                     and d.lower() != 'basemodel' and not d.startswith(('.', '_'))),
+                    key=lambda d: ('default' not in os.path.basename(d).lower(), d.lower())) if os.path.isdir(char) else []
+    shared = os.path.join(os.path.dirname(os.path.normpath(char)), '_Shared')
+    seen = set()
+    for f in list(folders) + others + [shared]:
+        if os.path.normcase(os.path.normpath(f)) in seen:
+            continue
+        seen.add(os.path.normcase(os.path.normpath(f)))
+        md = os.path.join(f, 'Materials')
+        if not os.path.isdir(md):
+            continue
+        j = next((os.path.join(md, x) for x in os.listdir(md) if x.lower() == key + '.jmtl'), None)
+        if j:
+            t = tex.material_textures(j)
+            if 'color' in t:
+                out['_color'] = t['color']
+            if 'nrm' in t:
+                out['_nrm'] = t['nrm']
+            break
+    TEX_ALIAS[key] = out
+    return out
+
+
+def texture_for(material, folders, outdir, extra=None, alias=None):
+    """extra: the colour texture the mod's .mtls names for this material (2K20 - 2K24 mods; tried last).
+    alias: the colour texture the material's own hashes point to (2K26; used when no name matched)"""
     base = material.split(':')[0]
     cands = [base, base.rsplit('_', 1)[0] if base.endswith(('_l', '_r')) else base]
     if extra and extra.lower().endswith('_color'):
@@ -51,6 +94,18 @@ def texture_for(material, folders, outdir, extra=None):
                         im = im.resize((int(im.size[0] * k), int(im.size[1] * k)), Image.LANCZOS)
                     im.save(dst)
                 return 'textures/' + name
+    if alias and os.path.isfile(alias):
+        name = re.sub(r'(?i):skinned$', '', base) + '_color.png'
+        dst = os.path.join(outdir, 'textures', name)
+        if not os.path.exists(dst):
+            im = Image.open(alias)
+            im.load()
+            im = im.convert('RGBA')
+            if max(im.size) > TEX_MAX:
+                k = TEX_MAX / max(im.size)
+                im = im.resize((int(im.size[0] * k), int(im.size[1] * k)), Image.LANCZOS)
+            im.save(dst)
+        return 'textures/' + name
     return None
 
 
@@ -156,6 +211,8 @@ def build(char, attire, out, want_bones=False):
     meshes, report = [], []
     import mtls
     colors = mtls.color_maps(char)
+    TEX_ALIAS.clear()
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'portit'))
     for model, folder, mpath in ((base, os.path.join(char, 'BaseModel'), None), (att, adir, apath)):
         objs = object_names(model, folder)
         mats = [mb['material'] for mb in model.meshes]
@@ -196,8 +253,9 @@ def build(char, attire, out, want_bones=False):
                     t = by_name[names[j]]
                     w[t] = w.get(t, 0) + np.where(bi == b, bw, 0.0)
             mat = objs[k]
-            tex = texture_for(mat, [folder, os.path.join(char, 'BaseModel'), adir], out,
-                              extra=colors.get(re.sub(r'(?i):skinned$', '', mat).lower()))
+            dirs = [folder, os.path.join(char, 'BaseModel'), adir]
+            tex = texture_for(mat, dirs, out, extra=colors.get(re.sub(r'(?i):skinned$', '', mat).lower()),
+                              alias=material_alias(char, dirs, mat).get('_color'))
             meshes.append(dict(name=name, verts=verts @ TURN.T, normals=nrm @ TURN.T, uv=uv, tris=tris,
                                material=mat, texture=tex, weights=w))
             if name == 'M_Head':

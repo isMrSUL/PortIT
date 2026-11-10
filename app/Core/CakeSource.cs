@@ -147,10 +147,24 @@ public static class CakeSource
                                      && keep.Contains(Path.GetExtension(kv.Key), StringComparer.OrdinalIgnoreCase)
                                      && kv.Key.IndexOf("/Characters/", 1, StringComparison.OrdinalIgnoreCase) < 0).ToList();
         if (want.Count == 0) throw new InvalidOperationException($"{folder} / {attireDir}: not in the archives.");
+        // (PortIT 2026-11-10: the textures 2K26 shares between wrestlers - Characters/_Shared, 45 files / 106 MB: the
+        //  ula necklace of Umaga and Tama Tonga, the ring crew's outfits - extracted once, beside the wrestlers; the
+        //  port finds them through the materials' hashes)
+        var shared = index.Where(kv => kv.Key.StartsWith("Characters/_Shared/", StringComparison.OrdinalIgnoreCase)
+                                       && keep.Contains(Path.GetExtension(kv.Key), StringComparer.OrdinalIgnoreCase)).ToList();
+        if (shared.Count > 0) ExtractTo(game, Path.Combine(cache, "chars", "_Shared"), "_Shared", shared, Path.Combine(cache, "chars", "_Shared", ".done"));
         string root = Path.Combine(cache, "chars", folder);
         string stampFile = Path.Combine(root, "." + attireDir + ".done");
+        ExtractTo(game, root, folder, want, stampFile);
+        return root;
+    }
+
+    /// <summary>archive entries under Characters/{folder}/ -> root (DDS from .tex, sRGB codes as their plain twins);
+    /// skipped when stampFile already lists exactly these entries</summary>
+    static void ExtractTo(string game, string root, string folder, List<KeyValuePair<string, (string Archive, long Size)>> want, string stampFile)
+    {
         string stamp = string.Join("\n", want.OrderBy(kv => kv.Key).Select(kv => kv.Key + "\t" + kv.Value.Archive + "\t" + kv.Value.Size));
-        if (File.Exists(stampFile) && File.ReadAllText(stampFile) == stamp) return root;
+        if (File.Exists(stampFile) && File.ReadAllText(stampFile) == stamp) return;
         Load(game);
         var exf = registry!.GetMethods().Single(m => m.Name == "ExtractFile" && m.GetParameters().Length == 2 && m.GetParameters()[1].ParameterType == typeof(Stream));
         foreach (var group in want.GroupBy(kv => kv.Value.Archive))
@@ -181,8 +195,8 @@ public static class CakeSource
                 File.WriteAllBytes(dest, data);
             }
         }
+        Directory.CreateDirectory(Path.GetDirectoryName(stampFile)!);
         File.WriteAllText(stampFile, stamp);
-        return root;
     }
 
     public static int Run(string requestFile, string responseFile)

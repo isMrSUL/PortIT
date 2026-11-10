@@ -291,7 +291,7 @@ def manifest(mod_id, name, base, female, pac=None):
     """the superstar mod's manifest.txt (docs/SVRMOD_FORMAT.md 3.1); pac: the built ch.pac - over the old 192-page
     window it says needs=2.1.6 (the big-model memory), as the Mod Maker and its converters write it"""
     lines = ['type=superstar', 'id=%s' % mod_id, 'name=%s' % name[:31], 'short=%s' % name[:31], 'base=%s' % base,
-             'author=', 'version=1.0', 'made_with=PortIT 1.1.1', 'ratings=80,80,80,80,80,80,80', 'call=48']
+             'author=', 'version=1.0', 'made_with=PortIT 1.1.2', 'ratings=80,80,80,80,80,80,80', 'call=48']
     if pac:
         try:
             import model_budget
@@ -479,6 +479,15 @@ def copy_texture_pack(src, game, mod_id):
         sys.path.insert(0, os.path.join(HERE, 'k26'))
         import full_port
         pack = full_port.enabled_pack(game)
+        if not pack:
+            # (no pack ticked in the launcher: "PortIT HD" turned on - else the game never reads the HD sheets and
+            #  draws the pac's small one, people's "smudged and blurry" 8K ports, 2026-11-10)
+            try:
+                if full_port.enable_pack(game, 'PortIT HD'):
+                    out['pack_turned_on'] = True
+                    pack = 'PortIT HD'
+            except OSError as e:
+                log('could not turn the texture pack on in svr2011.toml: %s' % e)
         out['pack_enabled'] = bool(pack)
         pack = pack or 'PortIT HD'
         pdir = os.path.join(game, 'Texture Packs', pack)

@@ -387,7 +387,9 @@ def find_tex(char, attire, base, suffix):
         for f in os.listdir(folder):
             if f.lower().split('.')[0] == (base + suffix).lower():
                 return os.path.join(folder, f)
-    return None
+    # (no texture of that name: the one the material's own hashes point to - rock_fbx.material_alias, 2026-11-10)
+    a = rock_fbx.TEX_ALIAS.get(base.lower(), {}).get(suffix)
+    return a if a and os.path.isfile(a) else None
 
 
 # ---------------------------------------------------------------- build

@@ -462,6 +462,239 @@ def inner_bridges(spec, log=print, spread=0.3):
             log('%s: %d triangles across the lips left out' % (m['name'], int((~keep).sum())))
 
 
+SHALLOW = 0.30              # units: up to 3 cm through, any gear facing the skin's way counts
+TUCK = (0.04, 0.70)         # units (10 cm): skin under gear sits at least 0.4 cm below it; skin found up to 7 cm
+                            # through the gear (or under 0.4 cm below it) is moved in along its normal - Rey Mysterio
+                            # 1999's hip stood 3.5 - 6 cm out of his simplified overalls, 2026-11-10
+
+
+
+def _closest_on(p, A, B, C):
+    """the nearest point to p on each triangle (A, B, C: arrays) -> (points, edge): edge -1 when the point lies inside
+    the triangle, else the edge it lies on (0: A-B, 1: B-C, 2: C-A; a corner counts as one of its edges)"""
+    ab, ac = B - A, C - A
+    n = np.cross(ab, ac)
+    nn = np.maximum((n * n).sum(1), 1e-20)
+    t = ((p - A) * n).sum(1) / nn
+    q = p - n * t[:, None]                       # (p on the triangle's plane)
+    # barycentric of q
+    v0, v1, v2 = ab, ac, q - A
+    d00, d01, d11 = (v0 * v0).sum(1), (v0 * v1).sum(1), (v1 * v1).sum(1)
+    d20, d21 = (v2 * v0).sum(1), (v2 * v1).sum(1)
+    den = np.maximum(d00 * d11 - d01 * d01, 1e-20)
+    bv = (d11 * d20 - d01 * d21) / den
+    bw = (d00 * d21 - d01 * d20) / den
+    inside = (bv >= 0) & (bw >= 0) & (bv + bw <= 1)
+    out = q.copy()
+    edge = np.full(len(A), -1)
+    if (~inside).any():
+        segs = [(A, B), (B, C), (C, A)]
+        best = np.full(len(A), np.inf)
+        for k, (P0, P1) in enumerate(segs):
+            dd = P1 - P0
+            tt = np.clip(((p - P0) * dd).sum(1) / np.maximum((dd * dd).sum(1), 1e-20), 0, 1)
+            cp = P0 + dd * tt[:, None]
+            dist = ((cp - p) ** 2).sum(1)
+            take = ~inside & (dist < best)
+            out[take], edge[take], best[take] = cp[take], k, dist[take]
+    return out, edge
+
+
+def tuck_skin(spec, skip, log=print):
+    """skin under the gear moved in, below it: the body skin kept at the gear's edges and the head under a mask
+    (2K26 hides such skin with its hidden-polygon lists; the head is never removed) poked through the simplified gear -
+    Rey Mysterio 1999's head 0.5 - 1 cm through his mask, his toes 1.4 cm through his boots, 2026-11-10"""
+    ms = spec['attires'][0]['meshes']
+    # (the body only: the head under a mask is removed (hide_head_under) - moved in, the face in the mask's mouth
+    #  hole was pushed back up to 2.5 cm, crumpled, and the head's neck piece slid under an overall's bib, the body's
+    #  lighter skin showing beside the neck, Rey Mysterio 1999, 2026-11-10)
+    skin = [m for m in ms if m['name'].startswith('M_Body')]
+    gear = [m for m in ms if not m['name'].startswith(('M_Body', 'M_Head', 'M_EYE', 'M_TransB', 'M_transB', 'M_MouthBag',
+                                                        'mouth_', 'M_AEWMouth', 'M_InnerMouth', 'M_Teeth', 'M_Tongue'))
+            and m['name'] not in skip and m.get('kind') not in ('eye', 'lash', 'hair') and m['triangles']]
+    if not skin or not gear:
+        return
+    margin, deep = TUCK
+    # (which way the file's normals point: rock_model writes them inward, SvR's way - measured on the head, nearly
+    #  round: 4 - 18 % of its normals point away from its middle, Rey Mysterio 2019, 2026-11-10)
+    hd = [m for m in ms if m['name'].startswith('M_Head') and m['positions']] or skin
+    HP = np.concatenate([np.asarray(m['positions'], float) for m in hd])
+    HN = np.concatenate([np.asarray(m['normals'], float) for m in hd])
+    out_sign = 1.0 if (((HP - HP.mean(0)) * HN).sum(1) > 0).mean() > 0.5 else -1.0
+    head_mid = HP.mean(0)
+    A, B, C, GN, TI, base = [], [], [], [], [], 0
+    for g in gear:
+        P = np.asarray(g['positions'], float)
+        T = np.asarray(g['triangles'], int)
+        N = np.asarray(g['normals'], float)
+        A.append(P[T[:, 0]]), B.append(P[T[:, 1]]), C.append(P[T[:, 2]])
+        TI.append(T + base)
+        base += len(P)
+        n = N[T].sum(1)
+        GN.append(out_sign * n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12))
+    A, B, C, GN, TI = (np.concatenate(x) for x in (A, B, C, GN, TI))
+    e1, e2 = B - A, C - A
+    # (the gear's open edges - a mask's eye / mouth holes, a boot's top: skin beyond them stays where it is)
+    E = np.sort(np.concatenate([TI[:, [0, 1]], TI[:, [1, 2]], TI[:, [2, 0]]]), axis=1)
+    ue, cnt = np.unique(E, axis=0, return_counts=True)
+    open_e = {tuple(x) for x in ue[cnt == 1]}
+    tri_open = np.array([[tuple(sorted((t[a], t[b]))) in open_e for a, b in ((0, 1), (1, 2), (2, 0))] for t in TI])
+    cell = 0.25
+    lo = np.floor((np.minimum(np.minimum(A, B), C) - deep) / cell).astype(int)
+    hi = np.floor((np.maximum(np.maximum(A, B), C) + deep) / cell).astype(int)
+    grid = {}
+    for i in range(len(A)):
+        for x in range(lo[i, 0], hi[i, 0] + 1):
+            for y in range(lo[i, 1], hi[i, 1] + 1):
+                for z in range(lo[i, 2], hi[i, 2] + 1):
+                    grid.setdefault((x, y, z), []).append(i)
+    grid = {k: np.array(v) for k, v in grid.items()}
+    total = 0
+    for m in skin:
+        P = np.asarray(m['positions'], float)
+        N = np.asarray(m['normals'], float)
+        N = out_sign * N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)     # (outward)
+        moved = 0
+        for v, key in enumerate(map(tuple, np.floor(P / cell).astype(int))):
+            c = grid.get(key)
+            if c is None:
+                continue
+            d = N[v]
+            same = GN[c] @ d > 0.3          # (gear facing the skin's way: not the far side of a limb)
+            if not same.any():
+                continue
+            h = np.cross(d, e2[c])
+            a = np.einsum('ij,ij->i', e1[c], h)
+            ok = np.abs(a) > 1e-12
+            f = np.where(ok, 1.0 / np.where(ok, a, 1), 0)
+            s_ = P[v] - A[c]
+            u = f * np.einsum('ij,ij->i', s_, h)
+            q = np.cross(s_, e1[c])
+            w = f * (q @ d)
+            t = f * np.einsum('ij,ij->i', e2[c], q)
+            on = ok & (u >= -1e-6) & (w >= -1e-6) & (u + w <= 1 + 1e-6)
+            near = on & same & (t > -SHALLOW) & (t < margin)
+            if near.any():
+                P[v] -= d * (margin - t[near].min())
+                moved += 1
+                continue
+            # (deeper, up to `deep` through: only when the first gear met going in faces the skin's way - a double
+            #  arm band's far inside faces it too, and arm skin went 7 cm in, through the arm, 2026-11-10)
+            inner = on & (t < 0) & (t > -deep)
+            if not inner.any():
+                continue
+            k = int(np.argmax(np.where(inner, t, -np.inf)))
+            if same[k]:
+                P[v] -= d * (margin - t[k])
+                moved += 1
+        is_head = m['name'].startswith('M_Head')
+        # second pass - the nearest point on the gear: skin whose own normal misses the gear (an ear, the curve of
+        # the skull at a mask's edge - Rey Mysterio 1999's head still showed there, the user's look, 2026-11-10) is
+        # moved in along the gear's normal when it lies under a gear face (not past the gear's open edges) facing
+        # its own way, up to 1.5 cm through it or under 0.4 cm below it
+        for v, key in enumerate(map(tuple, np.floor(P / cell).astype(int))):
+            c = grid.get(key)
+            if c is None:
+                continue
+            # (the head: gear facing away from the head's middle - an ear's skin faces every way, front, back and
+            #  its folds; elsewhere: gear facing the skin's own way)
+            if is_head:
+                out_d = P[v] - head_mid
+                c = c[GN[c] @ (out_d / max(np.linalg.norm(out_d), 1e-9)) > 0.3]
+            else:
+                c = c[GN[c] @ N[v] > 0.3]
+            if not len(c):
+                continue
+            q, edge = _closest_on(P[v], A[c], B[c], C[c])
+            dist = np.linalg.norm(q - P[v], axis=1)
+            k = int(dist.argmin())
+            if dist[k] > 0.30 or (edge[k] >= 0 and tri_open[c[k], edge[k]]):
+                continue
+            sd = float((P[v] - q[k]) @ GN[c[k]])
+            if -margin < sd < (0.35 if is_head else 0.15):   # (the head: ears stand 1 - 3 cm out of a mask)
+                P[v] -= GN[c[k]] * (sd + margin)
+                moved += 1
+        if moved:
+            m['positions'] = P.round(6).tolist()
+            total += moved
+            log('%s: %d vertices under the gear moved in below it' % (m['name'], moved))
+    return total
+
+
+
+def hide_head_under(spec, skip, log=print):
+    """the head skin a mask / hood covers removed, as 2K's hidden-polygon lists do: a head point is covered when the
+    gear crosses the line from the head's middle out to it (or lies within 1.5 cm past it) - an ear standing out of
+    the mask too. A triangle goes when its three points are covered: the face in the mask's eye / mouth holes and
+    the neck below it stay. Rey Mysterio 1999's head showed through his mask - ears and flat facets, 2026-11-10"""
+    ms = spec['attires'][0]['meshes']
+    heads = [m for m in ms if m['name'].startswith('M_Head') and m['triangles']]
+    gear = [m for m in ms if not m['name'].startswith(('M_Body', 'M_Head', 'M_EYE', 'M_TransB', 'M_transB', 'M_MouthBag',
+                                                        'mouth_', 'M_AEWMouth', 'M_InnerMouth', 'M_Teeth', 'M_Tongue'))
+            and m['name'] not in skip and m.get('kind') not in ('eye', 'lash', 'hair') and m['triangles']]
+    if not heads or not gear:
+        return 0
+    HP = np.concatenate([np.asarray(m['positions'], float) for m in heads])
+    mid = HP.mean(0)
+    lo, hi = HP.min(0) - 0.3, HP.max(0) + 0.3
+    # (head gear only - a mask, a hood up, a hat: most of its points within the skull's reach of the head's middle;
+    #  an overall's strap crossing the line to the head's neck piece took that skin off, the body's lighter tone
+    #  showed beside the neck, Rey Mysterio 1999, 2026-11-10)
+    reach = float(np.percentile(np.linalg.norm(HP - mid, axis=1), 60)) * 1.35
+    gear = [g for g in gear if (np.linalg.norm(np.asarray(g['positions'], float) - mid, axis=1) < reach).mean() > 0.5]
+    if not gear:
+        return 0
+    A, B, C = [], [], []
+    for g in gear:
+        P = np.asarray(g['positions'], float)
+        T = np.asarray(g['triangles'], int)
+        tri = P[T]
+        near = ((tri.max(1) >= lo) & (tri.min(1) <= hi)).all(1)      # (the gear's triangles about the head)
+        A.append(tri[near, 0]), B.append(tri[near, 1]), C.append(tri[near, 2])
+    A, B, C = (np.concatenate(x) for x in (A, B, C))
+    if not len(A):
+        return 0
+    e1, e2 = B - A, C - A
+    total = 0
+    for m in heads:
+        P = np.asarray(m['positions'], float)
+        cov = np.zeros(len(P), bool)
+        for v in range(len(P)):
+            d = P[v] - mid
+            L = float(np.linalg.norm(d))
+            if L < 1e-6:
+                continue
+            d = d / L
+            h = np.cross(d, e2)
+            a = np.einsum('ij,ij->i', e1, h)
+            ok = np.abs(a) > 1e-12
+            f = np.where(ok, 1.0 / np.where(ok, a, 1), 0)
+            s_ = mid - A
+            u = f * np.einsum('ij,ij->i', s_, h)
+            q = np.cross(s_, e1)
+            w = f * (q @ d)
+            t = f * np.einsum('ij,ij->i', e2, q)
+            # (the gear near the point - within the outer 30 % of the line: the mask's bottom edge crossed the long
+            #  line down to the head's chest piece, which went and the body's lighter skin showed, 2026-11-10)
+            cov[v] = L < reach and bool((ok & (u >= 0) & (w >= 0) & (u + w <= 1) & (t > 0.7 * L) & (t < L + 0.15)).any())
+        T = np.asarray(m['triangles'], int)
+        keep = ~cov[T].all(1)
+        if keep.all():
+            continue
+        used = np.zeros(len(P), bool)
+        used[T[keep].ravel()] = True
+        remap = -np.ones(len(P), int)
+        remap[used] = np.arange(int(used.sum()))
+        n0, t0 = len(P), len(T)
+        for key in ('positions', 'normals', 'uvs', 'weights'):
+            m[key] = [m[key][i] for i in np.nonzero(used)[0]]
+        m['triangles'] = remap[T[keep]].tolist()
+        total += t0 - int(keep.sum())
+        log('%s under the gear removed: %d of %d vertices, %d of %d triangles' % (m['name'], n0 - int(used.sum()), n0,
+                                                                                   t0 - int(keep.sum()), t0))
+    spec['attires'][0]['meshes'] = [m for m in ms if not (m['name'].startswith('M_Head') and not m['triangles'])]
+    return total
+
 def fix_model(path, card_names, template, log=print):
     """the weight fixes on a rock_model model.json (in place), then oversized meshes split"""
     spec = json.load(open(path))
@@ -469,6 +702,8 @@ def fix_model(path, card_names, template, log=print):
     if face:
         mouth_cards(spec, face, log)
     gear_weights(spec, set(card_names), log)
+    hide_head_under(spec, set(card_names), log)
+    tuck_skin(spec, set(card_names), log)
     if GEAR_HEAD[0]:
         inner_bridges(spec, log)
     split_big(spec, log)
@@ -751,3 +986,44 @@ def enabled_pack(game):
     except OSError:
         pass
     return None
+
+
+def enable_pack(game, name):
+    """turn the texture pack `name` on in the game's svr2011.toml (native_texture_packs, as the launcher's Texture packs
+    list does: that one line changed or added, every other line kept) -> True when it is on. People's full-detail ports
+    drew the pac's own 2048 x 1024 sheet - smudged and blurry - when "PortIT HD" was never ticked in the launcher: the
+    port reads no pack that list leaves off (2026-11-10, the test game: no PortIT texture ever replaced)"""
+    path = os.path.join(game, 'svr2011.toml')
+    try:
+        lines = open(path, encoding='utf-8', errors='replace').read().splitlines()
+    except OSError:
+        lines = ['# WWE SmackDown vs. Raw 2011 - settings (the launcher rewrites this file)']
+    at, packs, section = None, [], len(lines)
+    for i, line in enumerate(lines):
+        t = line.strip()
+        if t.startswith('['):
+            section = i
+            break
+        k, eq, v = line.partition('=')
+        if eq and k.strip() == 'native_texture_packs':
+            at = i
+            packs = [x.strip() for x in v.strip().strip('"').split(';') if x.strip()]
+    if any(x.lower() == name.lower() for x in packs):
+        return True
+    packs.append(name)
+    line = 'native_texture_packs = "%s"' % ';'.join(packs)
+    if at is None:
+        while section > 0 and not lines[section - 1].strip():
+            section -= 1
+        lines.insert(section, line)
+    else:
+        lines[at] = line
+    keep = path + '.before_portit'
+    if os.path.isfile(path) and not os.path.exists(keep):
+        import shutil
+        shutil.copy2(path, keep)
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('\n'.join(lines) + '\n')
+    os.replace(tmp, path)
+    return enabled_pack(game) is not None

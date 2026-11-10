@@ -70,6 +70,7 @@ class Textures:
     def __init__(self, folder):
         self.files = [p for p in glob.glob(os.path.join(folder, '**', '*'), recursive=True) if p.lower().endswith('.dds')]
         self.by_hash = {}
+        self.shared = []
         for p in self.files:
             parts = os.path.relpath(p, folder).replace(os.sep, '/').split('/')
             stem = os.path.splitext(parts[-1])[0]
@@ -77,6 +78,28 @@ class Textures:
             full = [os.path.basename(folder)] + parts[:-1] + [stem + '.tex']
             for i in range(len(full)):
                 self.by_hash.setdefault(fnv('/'.join(full[i:])), p)
+            # (2K26's materials hash the archive's whole path, Characters/<wrestler>/...: without it no game wrestler's
+            #  material found its texture by hash - only names that matched did; Batista's u_acce wears pierce_color)
+            self.by_hash.setdefault(fnv('/'.join(['Characters'] + full)), p)
+        # (2K26's shared textures, Characters/_Shared - the 2K26 extractor puts them beside the wrestlers: Umaga's and
+        #  Tama Tonga's ula necklace wears _Shared/Textures/ula_color; found by hash only, never by name)
+        shared = os.path.join(os.path.dirname(os.path.normpath(folder)), '_Shared', 'Textures')
+        if os.path.isdir(shared):
+            for f in os.listdir(shared):
+                if f.lower().endswith('.dds'):
+                    p = os.path.join(shared, f)
+                    self.by_hash.setdefault(fnv('Characters/_Shared/Textures/' + os.path.splitext(f)[0] + '.tex'), p)
+                    self.shared.append(p)
+
+    def material_textures(self, jmtl_path):
+        """role -> dds path, from a material's own hashes only (no name guessing)"""
+        out = {}
+        if jmtl_path and os.path.exists(jmtl_path):
+            _, vals = jmtl_info(jmtl_path)
+            for v in vals:
+                if v in self.by_hash:
+                    out.setdefault(role_of(self.by_hash[v]), self.by_hash[v])
+        return out
 
     def for_material(self, jmtl_path, stem, near, alt=None):
         """role -> dds path for one material (alt: a second name to try, e.g. 'eye' for eye_l)"""

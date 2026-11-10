@@ -138,6 +138,13 @@ class Mcd:
         self._lods(chunks.get(b'LODs', -1))
         if v < 0x2F:
             self._older()
+        elif self.lods:
+            # (2K26 too: each mesh's own material from its triangles - an entrance piece named apart from its material,
+            #  AJ Styles 2016's M_HoodUp on the jacket's, found no texture; the users' report 2026-11-10)
+            for k, mb in enumerate(self.meshes):
+                subs = [s for s in (self.lods[0][k]['subsets'] if k < len(self.lods[0]) else []) if s[0] < len(self.objects)]
+                obj = self.objects[max(subs, key=lambda s: s[2])[0]][0] if subs else ''
+                mb['object'] = re.sub(r'(:skinned)?$', '', obj, flags=re.I)
 
     def _older(self):
         """2K20 - 2K25 files, made right for the 2K26 pipeline (2K26 files are left exactly as read):
