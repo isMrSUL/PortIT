@@ -8,13 +8,18 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
-    <Version>1.1.2</Version>
+    <Version>1.2.0</Version>
     <ApplicationIcon>Assets/portit.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <!-- the C# engine (EngineNet) and its parity checker against the old Python engine (EngineNet.Check) are projects of their own -->
+    <Compile Remove="EngineNet\**;EngineNet.Check\**" />
+    <None Remove="EngineNet\**;EngineNet.Check\**" />
     <AvaloniaResource Include="Assets/portit.ico;Assets/portit_256.png" />
-    <!-- the Python engine (readers, converter, the bundled SvR builder) ships beside PortIT.exe -->
-    <Content Include="Engine\**\*.py;Engine\**\*.json;Engine\**\*.exe;Engine\cake\*.dll;Engine\bigmodel\*" Exclude="Engine\**\__pycache__\**" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- the engine is C# (EngineNet, in-process); beside PortIT.exe only the 2K26 archive reader's DLLs and the big-model
+         DLL (the old Python engine in Engine\ stays in the source tree for comparing: PORTIT_PYTHON_ENGINE=1) -->
+    <Content Include="Engine\cake\*.dll;Engine\bigmodel\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <ProjectReference Include="EngineNet\PortIT.Engine.csproj" />
     <PackageReference Include="Avalonia" Version="11.3.20" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.20" />
     <PackageReference Include="Avalonia.Headless" Version="11.3.20" />

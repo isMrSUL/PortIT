@@ -20,14 +20,30 @@ public partial class MainWindow : Window
     public sealed record WrestlerItem(string Id, string Name, string Badge, string Detail, bool Female, string[] Attires);
     /// <summary>a mesh of the chosen attire; Keep: ticked = ported (clothes / gear / hair can be unticked: left out of
     /// the port, the skin under them kept)</summary>
-    public sealed class MeshItem
+    public sealed class MeshItem : System.ComponentModel.INotifyPropertyChanged
     {
-        public MeshItem(string name, string kind, string detail, bool canRemove) { Name = name; Kind = kind; Detail = detail; CanRemove = canRemove; }
+        public MeshItem(string name, string kind, string detail, bool canRemove, string? baseOf = null)
+        {
+            Name = name; Kind = kind; Detail = detail; CanRemove = canRemove; Base = baseOf; Label = MeshNames.Friendly(name);
+        }
         public string Name { get; }
+        /// <summary>the name in plain words (Left knee pad)</summary>
+        public string Label { get; }
         public string Kind { get; }
         public string Detail { get; }
         public bool CanRemove { get; }
-        public bool Keep { get; set; } = true;
+        /// <summary>an alternate look of another mesh (M_Hair_Entrance of M_Hair): ticked, it is used instead of that one</summary>
+        public string? Base { get; }
+        public string TickTip => Base != null ? $"An alternate look of {MeshNames.Friendly(Base)}: tick to use it instead"
+                                              : "Untick to leave this piece out of this outfit (the skin under it stays)";
+        bool keep = true;
+        public bool Keep
+        {
+            get => keep;
+            set { if (keep == value) return; keep = value; PropertyChanged?.Invoke(this, new(nameof(Keep))); KeepChanged?.Invoke(this); }
+        }
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+        public Action<MeshItem>? KeepChanged;
     }
     public sealed record HdSize(string Label, int Width)
     {
@@ -41,16 +57,16 @@ public partial class MainWindow : Window
         public override string ToString() => Label;
     }
 
-    static readonly string SettingsPath = Path.Combine(Engine.WorkRoot, "settings.json");
+    static readonly string SettingsPath = Path.Combine(Core.Engine.WorkRoot, "settings.json");
     readonly List<WrestlerItem> all = new();
     readonly ObservableCollection<WrestlerItem> shown = new();
-    readonly ObservableCollection<MeshItem> meshes = new();
+    ObservableCollection<MeshItem> meshes => ring.Meshes;
     WrestlerItem? chosen;
     string? lastMod;
     int lastPages;
     CancellationTokenSource? cts;
     bool filling;
-    readonly string python = LoadSetting("python") ?? Engine.DefaultPython;
+    readonly string python = LoadSetting("python") ?? Core.Engine.DefaultPython;
 
     public MainWindow()
     {
@@ -101,6 +117,7 @@ public partial class MainWindow : Window
         BigModelButton.Click += async (_, _) => await BigModel();
         OpenModelButton.Click += async (_, _) => await OpenModel();
         Opened += async (_, _) => { if (Directory.Exists(SourceBox.Text)) await LoadList(); };
+        InitOutfits();
     }
 
     /// <summary>(screenshots: Render.Window) pick the first listed wrestler whose name contains `name`</summary>
@@ -120,8 +137,8 @@ public partial class MainWindow : Window
         SaveSetting("source", aew ? "aew" : "2k26");
         all.Clear();
         shown.Clear();
-        meshes.Clear();
         CountText.Text = "nothing loaded";
+        ResetOutfits();
     }
 
     string Source => SrcAEW.IsChecked == true ? "aew" : "2k26";
@@ -154,7 +171,7 @@ public partial class MainWindow : Window
         string game = GameBox.Text?.Trim().Trim('"') ?? "";
         if (!File.Exists(Path.Combine(game, "svr2011.exe"))) { Status("Choose the SvR 2011 game folder first (the one with svr2011.exe)."); return; }
         JsonElement st = default;
-        await Work("Checking the big-model DLL…", async ct => st = await Engine.Run(python, new() { ["command"] = "bigmodel", ["game"] = game, ["action"] = "status" }, null, ct));
+        await Work("Checking the big-model DLL…", async ct => st = await Core.Engine.Run(python, new() { ["command"] = "bigmodel", ["game"] = game, ["action"] = "status" }, null, ct));
         if (st.ValueKind != JsonValueKind.Object) return;
         string state = st.GetProperty("installed").GetString() ?? "none";
         string text =
@@ -174,7 +191,7 @@ public partial class MainWindow : Window
         if (pick == null) return;
         await Work(pick == "Remove" ? "Removing the big-model DLL…" : "Installing the big-model DLL…", async ct =>
         {
-            var r = await Engine.Run(python, new() { ["command"] = "bigmodel", ["game"] = game, ["action"] = pick == "Remove" ? "remove" : "install" }, null, ct);
+            var r = await Core.Engine.Run(python, new() { ["command"] = "bigmodel", ["game"] = game, ["action"] = pick == "Remove" ? "remove" : "install" }, null, ct);
             Status(pick == "Remove" ? "Big-model DLL removed." :
                    "Big-model DLL installed. Start the game once: then PortIT's full-detail ports use the bigger model memory.");
         });
@@ -213,7 +230,7 @@ public partial class MainWindow : Window
         SaveSetting(Source == "aew" ? "aewPath" : "2kPath", path);
         await Work("Reading the wrestlers…", async ct =>
         {
-            var r = await Engine.Run(python, new() { ["command"] = "list", ["source"] = Source, ["path"] = path }, null, ct);
+            var r = await Core.Engine.Run(python, new() { ["command"] = "list", ["source"] = Source, ["path"] = path }, null, ct);
             all.Clear();
             foreach (var w in r.GetProperty("wrestlers").EnumerateArray())
             {
@@ -252,56 +269,13 @@ public partial class MainWindow : Window
         {
             AttireBox.ItemsSource = w.Attires.Length > 0 ? w.Attires : new[] { "(the one attire)" };
             AttireBox.SelectedIndex = 0;
+            FillEntrance(w);
         }
         finally { filling = false; }
         await Inspect();
-    }
-
-    async Task Inspect()
-    {
-        if (chosen == null) return;
-        var w = chosen;
-        await Work($"Reading {w.Name}…", async ct =>
-        {
-            var req = Request("inspect");
-            var r = await Engine.Run(python, req, null, ct);
-            meshes.Clear();
-            int verts = 0;
-            foreach (var m in r.GetProperty("meshes").EnumerateArray())
-            {
-                int v = m.GetProperty("verts").GetInt32();
-                verts += v;
-                bool variant = m.GetProperty("variant").GetBoolean();
-                string tex = string.Join(", ", m.GetProperty("textures").EnumerateArray().Select(t => t.GetString()));
-                string kind = m.GetProperty("kind").GetString()!;
-                // (clothes, gear and hair can be left out; the body, head, eyes, lashes and mouth parts can't)
-                bool canRemove = !variant && kind is "gear" or "hair";
-                meshes.Add(new(m.GetProperty("material").GetString()!, kind + (variant ? " · left out" : ""),
-                               $"{v,6:N0} verts   {tex}", canRemove && !variant));
-            }
-            MeshCount.Text = $"{meshes.Count} meshes, {verts:N0} vertices";
-            Status($"{w.Name}: {meshes.Count} meshes.");
-            // (the 2K model as it is, before porting: who it is, what it wears)
-            if (r.TryGetProperty("preview", out var pv) && pv.ValueKind == JsonValueKind.String)
-                ShowPreview(pv.GetString(), $"{w.Name}  ·  {SourceLabel} model (before porting)");
-            SourcePreviewButton.IsEnabled = true;   // (2K26 and AEW both drawn before porting)
-        });
-    }
-
-    /// <summary>the 2K model drawn again without the unticked meshes - how he looks with that edit, before porting</summary>
-    async Task SourcePreview()
-    {
-        if (chosen == null) return;
-        var w = chosen;
-        await Work($"Drawing {w.Name}…", async ct =>
-        {
-            var req = Request("source_preview");
-            req["leave_out"] = meshes.Where(m => m.CanRemove && !m.Keep).Select(m => m.Name).Distinct().ToArray();
-            var r = await Engine.Run(python, req, null, ct);
-            if (r.TryGetProperty("preview", out var pv) && pv.ValueKind == JsonValueKind.String)
-                ShowPreview(pv.GetString(), $"{w.Name}  ·  {SourceLabel} model (before porting, your edit)");
-            Status($"{w.Name}: preview updated.");
-        });
+        // (screenshots only: PORTIT_SHOT_ENTRANCE=<n> picks entrance option n once the wrestler is read)
+        if (int.TryParse(Environment.GetEnvironmentVariable("PORTIT_SHOT_ENTRANCE"), out int shotEntrance) && shotEntrance < EntranceBox.ItemCount)
+            EntranceBox.SelectedIndex = shotEntrance;
     }
 
     Dictionary<string, object?> Request(string command)
@@ -337,7 +311,7 @@ public partial class MainWindow : Window
             if (pick == "Install")
                 await Work("Installing the big-model DLL…", async ct =>
                 {
-                    await Engine.Run(python, new() { ["command"] = "bigmodel", ["game"] = game, ["action"] = "install" }, null, ct);
+                    await Core.Engine.Run(python, new() { ["command"] = "bigmodel", ["game"] = game, ["action"] = "install" }, null, ct);
                     Status("Big-model DLL installed. Start the game once, then port again for the full-detail model.");
                 });
             return;
@@ -353,15 +327,15 @@ public partial class MainWindow : Window
         req["face"] = FaceCheck.IsChecked == true;
         req["mod_id"] = (ModIdBox.Text ?? "").Trim();
         req["mod_name"] = (ModNameBox.Text ?? "").Trim();
-        // (the unticked clothes / gear: left out of the port)
-        req["leave_out"] = meshes.Where(m => m.CanRemove && !m.Keep).Select(m => m.Name).Distinct().ToArray();
+        // (each outfit's unticked pieces left out, its ticked alternate looks used; the entrance outfit a second model)
+        AddOutfits(req);
         ReportText.Text = "";
         await Work($"Porting {chosen.Name}…", async ct =>
         {
-            var r = await Engine.Run(python, req, line => Dispatcher.UIThread.Post(() => { ReportText.Text += line + "\n"; Status(line); }), ct);
+            var r = await Core.Engine.Run(python, req, line => Dispatcher.UIThread.Post(() => { ReportText.Text += line + "\n"; Status(line); }), ct);
             lastMod = r.GetProperty("out").GetString();
             ReportText.Text = string.Join("\n", r.GetProperty("report").EnumerateArray().Select(x => "•  " + x.GetString()));
-            ShowPreview(r.GetProperty("preview").GetString(), $"{chosen.Name}  ·  {r.GetProperty("pages").GetInt32()} pages");
+            Ported(r);
             lastPages = r.GetProperty("pages").GetInt32();
             OpenButton.IsEnabled = InstallButton.IsEnabled = AttireButton.IsEnabled = true;
             Status($"Done: {lastMod}");
@@ -388,7 +362,7 @@ public partial class MainWindow : Window
         if (!ok) return;
         await Work("Installing…", async ct =>
         {
-            var r = await Engine.Run(python, new() { ["command"] = "install", ["mod_dir"] = lastMod, ["game"] = game, ["mod_id"] = id }, null, ct);
+            var r = await Core.Engine.Run(python, new() { ["command"] = "install", ["mod_dir"] = lastMod, ["game"] = game, ["mod_id"] = id }, null, ct);
             string msg = "Installed: " + r.GetProperty("installed").GetString();
             if (r.TryGetProperty("pack", out var pk))
             {
@@ -410,14 +384,14 @@ public partial class MainWindow : Window
         string game = GameBox.Text?.Trim().Trim('"') ?? "";
         List<StarSlots>? stars = null;
         await Work("Reading the game's superstars…", async ct =>
-            stars = StarSlots.From(await Engine.Run(python, new() { ["command"] = "stars", ["game"] = game }, null, ct)));
+            stars = StarSlots.From(await Core.Engine.Run(python, new() { ["command"] = "stars", ["game"] = game }, null, ct)));
         if (stars == null || stars.Count == 0) { Status("No superstars found in the game folder above."); return; }
         string guess = Path.GetFileName(lastMod).Replace('_', ' ').ToUpperInvariant();
         var choice = await new AttireDialog(stars, guess, lastPages).ShowDialog<AttireChoice?>(this);
         if (choice == null) return;
         await Work("Installing the attire…", async ct =>
         {
-            var r = await Engine.Run(python, new()
+            var r = await Core.Engine.Run(python, new()
             {
                 ["command"] = "install_attire", ["mod_dir"] = lastMod, ["game"] = game, ["star"] = choice.Star.Id, ["star_name"] = choice.Star.Name,
                 ["slot"] = choice.Slot, ["name"] = choice.Name, ["entrance"] = choice.Entrance, ["author"] = choice.Author, ["version"] = choice.Version,

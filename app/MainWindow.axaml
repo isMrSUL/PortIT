@@ -69,7 +69,7 @@
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
 
       <!-- centre: the preview of the built model and the source meshes -->
-      <Grid Grid.Column="2" RowDefinitions="*,10,220">
+      <Grid Grid.Column="2" RowDefinitions="*,10,270">
         <Border Classes="panel" ClipToBounds="True">
           <Grid>
             <Image x:Name="PreviewImage" Stretch="Uniform" Margin="10" />
@@ -82,13 +82,20 @@
               <TextBlock Classes="faint" Text="PREVIEW" FontWeight="SemiBold" />
               <TextBlock x:Name="PreviewTitle" FontWeight="SemiBold" Foreground="{StaticResource AccentHi}" />
             </StackPanel>
+            <!-- the two outfits: what he wears in the ring, what he walks out in (each with its own meshes and picture) -->
+            <StackPanel x:Name="OutfitBar" Margin="16,12" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal" Spacing="6" IsVisible="False">
+              <ToggleButton x:Name="OutfitRing" Content="Ring attire" IsChecked="True" Classes="chip"
+                            ToolTip.Tip="What he wears in the match: its meshes below, its picture here" />
+              <ToggleButton x:Name="OutfitEntrance" Content="Entrance outfit" Classes="chip"
+                            ToolTip.Tip="What he walks out in (worn only for the entrance): its own meshes below, its own picture here" />
+            </StackPanel>
           </Grid>
         </Border>
         <Border Grid.Row="2" Classes="panel" Padding="14">
           <Grid RowDefinitions="Auto,*">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
               <Border Classes="bar" />
-              <TextBlock Grid.Column="1" Classes="h" Text="Meshes" />
+              <TextBlock Grid.Column="1" Classes="h" x:Name="MeshHeader" Text="Meshes" />
               <TextBlock Grid.Column="2" x:Name="MeshCount" Classes="faint" VerticalAlignment="Center" />
               <Button Grid.Column="3" x:Name="SourcePreviewButton" Content="Update preview" IsEnabled="False" Margin="10,0,0,0"
                       Padding="10,3" FontSize="12" ToolTip.Tip="Draw the source model again without the unticked pieces (before porting)" />
@@ -97,12 +104,17 @@
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <Border Classes="row">
-                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                       <CheckBox IsChecked="{Binding Keep, Mode=TwoWay}" IsEnabled="{Binding CanRemove}" MinWidth="0" Margin="0,0,8,0"
-                                ToolTip.Tip="Untick to leave this piece out of the port (the skin under it stays)" />
-                      <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                ToolTip.Tip="{Binding TickTip}" />
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Name}" FontSize="10" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
                       <TextBlock Grid.Column="2" Classes="mono" Text="{Binding Detail}" Margin="10,0" VerticalAlignment="Center" />
-                      <Border Grid.Column="3" Classes="pill"><TextBlock Text="{Binding Kind}" FontSize="10" Foreground="{StaticResource Dim}" /></Border>
+                      <Border Grid.Column="3" Classes="pill" VerticalAlignment="Center"><TextBlock Text="{Binding Kind}" FontSize="10" Foreground="{StaticResource Dim}" /></Border>
+                      <Button Grid.Column="4" Content="Show" Tag="{Binding Name}" Click="OnShowMesh" Padding="8,2" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center"
+                              ToolTip.Tip="Draw the model with this piece in orange, to see which one it is" />
                     </Grid>
                   </Border>
                 </DataTemplate>
@@ -125,6 +137,11 @@
             <StackPanel Spacing="3">
               <TextBlock Classes="label" Text="Attire" />
               <ComboBox x:Name="AttireBox" HorizontalAlignment="Stretch" />
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Classes="label" Text="Entrance outfit" />
+              <ComboBox x:Name="EntranceBox" HorizontalAlignment="Stretch"
+                        ToolTip.Tip="SvR 2011 can show a wrestler in one outfit for the entrance and another in the ring (as the game does for Undertaker, CM Punk, John Cena).&#x0a;The ring attire is the attire above with the meshes you ticked; the entrance outfit is a second model worn only for the entrance:&#x0a;the same attire with all its gear (a coat or hood you unticked for the ring), or another attire." />
             </StackPanel>
             <StackPanel Spacing="3">
               <TextBlock Classes="label" Text="Body" />

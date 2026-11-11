@@ -572,8 +572,18 @@ def build(char, attire, out, template=TEMPLATE, target_scale=1.0):
                     hand += Wd[:, k]
             imp[hand > 0.5] *= 2.0
             Wn = Wd / np.maximum(Wd.sum(1, keepdims=True), 1e-9)
-            keep, tris = qem.simplify(V, tris, tgt_n, importance=imp, attr=Wn, attr_weight=2.0,
+            tris0 = tris
+            keep, tris = qem.simplify(V, tris0, tgt_n, importance=imp, attr=Wn, attr_weight=2.0,
                                       lock_borders=m['name'] not in ('M_Teeth',))
+            if len(keep) > 1.4 * tgt_n and m['name'] not in ('M_Head', 'M_Body'):
+                # (a piece made of many open strips - hair strands, necklace beads, laces: its open edges were all
+                #  kept and it hardly simplified (a 2K24 Stardust's hair 30,444 -> 24,425 points, the port stuck at
+                #  423 pages and failed): again with its open edges free, 2026-11-11)
+                keep2, tris2 = qem.simplify(V, tris0, tgt_n, importance=imp, attr=Wn, attr_weight=2.0, lock_borders=False)
+                if len(keep2) < len(keep):
+                    print('%s: open-edged pieces - simplified with their edges free (%d -> %d points)'
+                          % (m['name'], len(keep), len(keep2)))
+                    keep, tris = keep2, tris2
             remap = -np.ones(n, int)
             remap[keep] = np.arange(len(keep))
             tris = remap[tris]

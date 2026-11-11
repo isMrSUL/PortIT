@@ -20,7 +20,7 @@
 ## Quick start
 
 1. Download **`PortIT-<version>-win-x64.zip`** from [Releases](../../releases/latest), unzip it anywhere and run
-   **`PortIT.exe`** (no install: .NET and Python are inside).
+   **`PortIT.exe`** (no install: everything is inside).
 2. Choose your SvR 2011 game folder, then click **Big-model DLL…** and **Install** (needed for full-detail models and
    their HD textures; [how and why](docs/USER_GUIDE.md#the-big-model-dll-for-full-detail)). Start the game once.
 3. Choose your source - the WWE 2K26 game folder, a folder of 2K mods (2K19 – 2K26), one wrestler's model folder
@@ -71,9 +71,8 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
 
 ## Build from source
 
-You need the [.NET 10 SDK](https://dotnet.microsoft.com/) and **Python 3.12** with **NumPy** and **Pillow**
-(`pip install numpy pillow`). PortIT uses `app\Engine\python\python.exe` when it is there, otherwise `python` from your
-PATH.
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/). Since 1.2.0 the engine is C# and runs inside PortIT.exe;
+no Python is needed.
 
 ```
 cd app
@@ -89,12 +88,9 @@ with `bigmodel_dll/build.sh` ([Zig](https://ziglang.org/) 0.13).
 | Folder | What it is |
 |---|---|
 | `app/` | the Avalonia app (C#) |
-| `app/Engine/worker.py` | the engine's entry point (the app talks to it through JSON files) |
-| `app/Engine/k26/` | the full-detail pipeline: face fit, weights, texture sheets and packs, checks; `aew_bridge.py` feeds AEW into it |
-| `app/Engine/portit/` | source readers (2K, AEW), preview, attires, the classic converter |
-| `app/Engine/readers/` | file readers: 2K `.mcd`, UE4 IoStore / zen packages, PS4 textures |
-| `app/Engine/svr/` | the SvR 2011 model builder and file formats; `bpe.zig` is the source of the small native compressor (with a Python fallback) |
-| `app/Engine/cake/` | the 2K26 archive reader (BakeIT.Core) and the libraries it uses |
+| `app/EngineNet/` | the engine (C#, runs inside PortIT.exe): `Worker.cs` takes the app's requests; `Readers/` the 2K `.mcd`, 2K19 - 2K22 pack, UE4 IoStore / zen and PS4 texture readers; `Port/` the face fit, weights, texture sheets and packs, checks, previews, attire mods, the AEW bridge, the entrance outfit; `Build/` the SvR 2011 model builder; `Formats/`, `Imaging/` file formats and image code |
+| `app/EngineNet.Check/` | the checker that compared the C# engine with the old Python engine, piece by piece (`ref/*_ref.py` make the Python side); the plan and results are in `app/EngineNet/PORT_PLAN.md` |
+| `app/Engine/` | the old Python engine (up to 1.1.2), kept for comparing: PortIT runs it when `PORTIT_PYTHON_ENGINE=1` is set and it sits beside PortIT.exe. `Engine/cake/` (the 2K26 archive reader, BakeIT.Core) and `Engine/bigmodel/` ship with PortIT |
 | `bigmodel_dll/` | the source of the optional big-model DLL (`xinput1_4.dll`) for full-detail wrestlers |
 | `docs/` | the [user guide](docs/USER_GUIDE.md) and its pictures |
 | `tools/` | `make_release.ps1`: builds the release zips |
@@ -103,7 +99,8 @@ with `bigmodel_dll/build.sh` ([Zig](https://ziglang.org/) 0.13).
 
 Made by **SUL (MrSUL)**, with [Claude Code](https://claude.com/claude-code) as the coding assistant.
 
-The SvR 2011 model builder and format code in `app/Engine/svr` started from the tools of the
+The SvR 2011 model builder and format code (`app/EngineNet/Build`, `Formats`; the Python originals in `app/Engine/svr`)
+started from the tools of the
 [WWE SmackDown vs. Raw 2011 PC port](https://github.com/KaikoClanworth1/wwe-svr2011-pc) (MIT, KaikoClanworth1 and
 the SvR 2011 PC port contributors). See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 

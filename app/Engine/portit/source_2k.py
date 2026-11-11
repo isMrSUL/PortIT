@@ -41,7 +41,9 @@ def jmtl_info(path):
                 shader = d[root + off]
     except Exception:
         pass
-    vals = {struct.unpack_from('<Q', d, o)[0] for o in range(0, len(d) - 7, 4)}
+    # (in file order: a material can point at two textures of one kind - a painted head at head_color and
+    #  facepaint_color - and a set's order chose between them by chance, PortIT 2026-11-11)
+    vals = list(dict.fromkeys(struct.unpack_from('<Q', d, o)[0] for o in range(0, len(d) - 7, 4)))
     return shader, vals
 
 
@@ -92,13 +94,12 @@ class Textures:
                     self.shared.append(p)
 
     def material_textures(self, jmtl_path):
-        """role -> dds path, from a material's own hashes only (no name guessing)"""
+        """role -> dds path, from a material's own hashes only (no name guessing); two of one role: the one named after
+        the material (head.jmtl: head_color, not facepaint_color), else the first in the file"""
         out = {}
         if jmtl_path and os.path.exists(jmtl_path):
             _, vals = jmtl_info(jmtl_path)
-            for v in vals:
-                if v in self.by_hash:
-                    out.setdefault(role_of(self.by_hash[v]), self.by_hash[v])
+            pick_by_role(out, [self.by_hash[v] for v in vals if v in self.by_hash], jmtl_path)
         return out
 
     def for_material(self, jmtl_path, stem, near, alt=None):
@@ -106,10 +107,7 @@ class Textures:
         out = {}
         if jmtl_path and os.path.exists(jmtl_path):
             _, vals = jmtl_info(jmtl_path)
-            for v in vals:
-                if v in self.by_hash:
-                    p = self.by_hash[v]
-                    out.setdefault(role_of(p), p)
+            pick_by_role(out, [self.by_hash[v] for v in vals if v in self.by_hash], jmtl_path)
         if 'color' not in out:   # fallback: <stem>_<role>.dds next to the model
             for p in self.files:
                 if os.path.dirname(os.path.dirname(p)) != near:
@@ -118,6 +116,18 @@ class Textures:
                 if any(n and s.startswith(n.lower() + '_') for n in (stem, alt)):
                     out.setdefault(role_of(p), p)
         return out
+
+
+def pick_by_role(out, paths, jmtl_path):
+    """out[role] = the texture for each role among paths (in the material file's order): the one named after the
+    material (<material>_<role>) when there are several, else the first"""
+    mat = os.path.splitext(os.path.basename(jmtl_path))[0].lower()
+    for p in paths:
+        r = role_of(p)
+        if r not in out:
+            out[r] = p
+        elif os.path.splitext(os.path.basename(p))[0].lower().startswith(mat + '_') and                 not os.path.splitext(os.path.basename(out[r]))[0].lower().startswith(mat + '_'):
+            out[r] = p
 
 
 def role_of(path):

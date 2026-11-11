@@ -1,11 +1,10 @@
 # Builds PortIT's release zips:
-#   release\PortIT-<version>-win-x64.zip          a self-contained win-x64 build (no .NET install needed) + a portable
-#                                                  Python 3.12 with NumPy and Pillow for the engine
+#   release\PortIT-<version>-win-x64.zip          a self-contained win-x64 build (no .NET install needed); the engine is
+#                                                  C# inside PortIT.exe (app\EngineNet) - no Python since 1.2.0
 #   release\PortIT-BigModel-DLL-<version>.zip     the optional big-model DLL (bigmodel_dll\out\xinput1_4.dll)
 # and a .sha256 file for each.
-#   .\tools\make_release.ps1 -Python <portable Python 3.12 folder with numpy + Pillow in Lib\site-packages>
-#                            [-Dll <a built xinput1_4.dll; default: bigmodel_dll\out\xinput1_4.dll>]
-param([Parameter(Mandatory = $true)][string]$Python, [string]$Dll)
+#   .\tools\make_release.ps1 [-Dll <a built xinput1_4.dll; default: bigmodel_dll\out\xinput1_4.dll>]
+param([string]$Dll)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 [xml]$proj = Get-Content (Join-Path $root 'app\PortIT.csproj')
@@ -16,17 +15,13 @@ $dist = Join-Path $rel $name
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 New-Item -ItemType Directory -Force $rel | Out-Null
 
-if (-not (Test-Path (Join-Path $Python 'python.exe'))) { throw "No python.exe in $Python" }
-& (Join-Path $Python 'python.exe') -c "import numpy, PIL; print('python ok:', numpy.__version__, PIL.__version__)"
-if ($LASTEXITCODE) { throw 'The portable Python cannot import numpy and Pillow.' }
-
 dotnet publish (Join-Path $root 'app\PortIT.csproj') -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=false -p:DebugType=none -o $dist
 if ($LASTEXITCODE) { throw 'dotnet publish failed' }
 
-# the engine's Python (PortIT looks for Engine\python\python.exe first), with no caches
-Copy-Item $Python (Join-Path $dist 'Engine\python') -Recurse
-Get-ChildItem $dist -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
+# (no Python and no .py files: the C# engine is in PortIT.Engine.dll)
+$py = Get-ChildItem $dist -Recurse -File | Where-Object { $_.Extension -eq '.py' -or $_.Name -eq 'python.exe' }
+if ($py) { throw "Python files in the build: $($py.FullName -join ', ')" }
 
 # never ship proprietary or game files
 $bad = Get-ChildItem $dist -Recurse -File | Where-Object {
@@ -53,14 +48,17 @@ and please credit SUL (MrSUL).
 
 function Zip($folder, $zip) {
     if (Test-Path $zip) { Remove-Item $zip -Force }
-    # (Python's zipfile: '/' in the entry names - Windows PowerShell's Compress-Archive and .NET Framework's ZipFile
-    #  write backslashes, which some unzip tools refuse)
-    $py = "import os, sys, zipfile`nsrc, dst = sys.argv[1], sys.argv[2]`nbase = os.path.dirname(src)`n" +
-          "with zipfile.ZipFile(dst, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:`n" +
-          "    for r, ds, fs in os.walk(src):`n        ds.sort()`n        for f in sorted(fs):`n" +
-          "            p = os.path.join(r, f)`n            z.write(p, os.path.relpath(p, base).replace(os.sep, '/'))"
-    & (Join-Path $Python 'python.exe') -c $py $folder $zip
-    if ($LASTEXITCODE) { throw "zip failed: $zip" }
+    # ('/' in the entry names - Windows PowerShell's Compress-Archive writes backslashes, which some unzip tools refuse;
+    #  entries in name order, folders first-level sorted as before)
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    $base = Split-Path $folder -Parent
+    $z = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        Get-ChildItem $folder -Recurse -File | Sort-Object FullName | ForEach-Object {
+            $rel = $_.FullName.Substring($base.Length + 1).Replace('\', '/')
+            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z, $_.FullName, $rel, [System.IO.Compression.CompressionLevel]::Optimal)
+        }
+    } finally { $z.Dispose() }
     $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
     "$hash  $(Split-Path $zip -Leaf)" | Set-Content "$zip.sha256"
     "release: $zip"

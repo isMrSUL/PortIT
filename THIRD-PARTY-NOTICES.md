@@ -8,7 +8,9 @@ It uses the following third-party components. Each keeps its own license.
 These files in `app/Engine/svr/` started from the tools of the
 [WWE SmackDown vs. Raw 2011 PC port](https://github.com/KaikoClanworth1/wwe-svr2011-pc) and were changed for PortIT:
 `ch_tool.py`, `gear_port.py`, `jboy.py`, `model_budget.py`, `prop_bones.py`, `prop_bones_stock.json`,
-`svr11_build.py`, `svr11_skeleton.json`, `svrfmt.py`, `w13_char.py`. Their license:
+`svr11_build.py`, `svr11_skeleton.json`, `svrfmt.py`, `w13_char.py`. Since PortIT 1.2.0 their C# versions in
+`app/EngineNet/Build` and `app/EngineNet/Formats` (`SvrBuilder.cs`, `PropBones.cs`, `Strip.cs`, `Jboy.cs`,
+`Containers.cs`, `Bpe.cs`) carry the same origin. Their license:
 
 ```
 WWE SmackDown vs. Raw 2011 PC port
@@ -44,6 +46,14 @@ stock SvR 2011 skeleton) that the model builder needs; they contain no models, t
 |---|---|---|
 | [Avalonia UI](https://github.com/AvaloniaUI/Avalonia) (Avalonia, Avalonia.Desktop, Avalonia.Headless, Avalonia.Themes.Fluent, Avalonia.Fonts.Inter) | MIT | NuGet packages |
 | [Inter font](https://github.com/rsms/inter) (via Avalonia.Fonts.Inter) | SIL Open Font License 1.1 | NuGet package |
+| [SkiaSharp](https://github.com/mono/SkiaSharp) (and the [Skia](https://skia.org/) library it wraps) | MIT (Skia: BSD 3-Clause) | NuGet package (the engine's image files) |
+| [Pfim](https://github.com/nickbabcock/Pfim) | MIT | NuGet package (the engine: BC7 textures) |
+| [System.IO.Hashing](https://github.com/dotnet/runtime) | MIT | NuGet package (the engine: XXH3 for the HD texture pack names) |
+
+The engine (`app/EngineNet`) was written to give the same results as PortIT's earlier Python engine, which used
+[NumPy](https://numpy.org/) (BSD 3-Clause) and [Pillow](https://python-pillow.org/) (MIT-CMU): some of its numeric and
+image routines (resampling, texture decoding, NumPy's sums, random numbers and sort, Pillow's polygon fill) follow their
+behaviour. No code of theirs is included.
 
 ## Libraries beside the 2K26 archive reader (`app/Engine/cake`)
 
@@ -77,11 +87,10 @@ Copyright (C) 2009-2017 Tsuda Kageyu; its full license is in `bigmodel_dll/minho
 | Component | License |
 |---|---|
 | [.NET runtime](https://github.com/dotnet/runtime) | MIT |
-| [Python 3.12](https://www.python.org/) (Windows embeddable package) | Python Software Foundation License |
-| [NumPy](https://numpy.org/) | BSD 3-Clause |
-| [Pillow](https://python-pillow.org/) | MIT-CMU (HPND) |
 
-To run PortIT from source you need Python 3.12 with NumPy and Pillow yourself.
+(PortIT 1.0.0 - 1.1.2 also bundled Python 3.12, NumPy and Pillow for their Python engine. Since 1.2.0 the release has no
+Python. The old Python engine in `app/Engine` is kept in the repository for comparing; it needs Python 3.12 with
+NumPy and Pillow.)
 
 ## Not included
 

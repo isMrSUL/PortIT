@@ -53,7 +53,8 @@ press an **Install** button.
 1. Download `PortIT-<version>-win-x64.zip` from the [Releases page](../../../releases/latest).
 2. Unzip it anywhere, for example `C:\Tools\PortIT`. Keep all the files together: `PortIT.exe` needs the `Engine`
    folder next to it.
-3. Start **`PortIT.exe`**. Nothing to install: .NET and Python are already inside the folder.
+3. Start **`PortIT.exe`**. Nothing to install: everything PortIT needs is already inside the folder (since 1.2.0 PortIT is one program - no
+   Python any more).
 
 > If Windows shows *"Windows protected your PC"*, click **More info**, then **Run anyway**. PortIT is not signed with
 > a paid certificate; that is the only reason for the message.
@@ -102,8 +103,8 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 |---|---|
 | **SvR game** (top) | your SvR 2011 game folder (the one with `pac\ch`). Use **Browse…** to pick it. **Big-model DLL…** installs or checks the [big-model DLL](#the-big-model-dll-for-full-detail). |
 | **Source** (left) | where the wrestlers come from: **WWE 2K19 - 2K26** or **AEW Fight Forever**, its folder (**…**), one wrestler's model folder (**Model folder…**), **Load**, a search box and the list of wrestlers. |
-| **Preview** (middle) | the wrestler as he or she looks in the source game, from the front and the side. After porting it shows the built SvR model. |
-| **Meshes** (middle, bottom) | every part of the model (body, head, eyes, hair, each piece of clothing). Untick a piece to leave it out. |
+| **Preview** (middle) | the wrestler as he or she looks in the source game, from the front and the side. After porting it shows the built SvR model. With an [entrance outfit](#entrance-outfit-and-ring-attire), **Ring attire** / **Entrance outfit** at its top right switch between the two. |
+| **Meshes** (middle, bottom) | every part of the model (body, head, eyes, hair, each piece of clothing), in plain words (*Left knee pad*) with the 2K name under it (`M_L_Kneepad`). Untick a piece to leave it out. **Show** draws the model with that piece in orange, so you can see which one it is. |
 | **Port** (right) | the choices for the port, the **Port to SvR 2011** button, the install buttons and the port report. |
 | Status bar (bottom) | what PortIT is doing right now, or the last message. |
 
@@ -124,20 +125,24 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 5. **Click a wrestler.** PortIT reads the model (the first time, a 2K26 wrestler takes a few seconds to unpack) and
    shows the **preview**. Check it is the wrestler and the look you want.
 6. **Attire** (right): if the wrestler has more than one look, pick it here. The preview updates.
-7. **Meshes**: untick anything you want **left out**, for example a jacket, a hat or a towel. Click
-   **Update preview** to see the wrestler without it. (The skin under a removed jacket is kept, so no holes.)
-8. Check the choices on the right (see [section 5](#5-the-choices-on-the-right-explained)). In most cases you only
+7. **Entrance outfit** (right, optional): what the wrestler walks out in - for example the attire with its jacket
+   and hat, while the ring attire is without them. See [Entrance outfit and ring attire](#entrance-outfit-and-ring-attire).
+8. **Meshes**: untick anything you want **left out**, for example a jacket, a hat or a towel. Not sure which piece a
+   name is? Click **Show** on its row. Click **Update preview** to see the wrestler without the unticked pieces.
+   (The skin under a removed jacket is kept, so no holes.)
+9. Check the choices on the right (see [section 5](#5-the-choices-on-the-right-explained)). In most cases you only
    need: **Model memory = Full detail + HD texture pack**.
-9. Click **Port to SvR 2011**. It takes about **one minute**. The bar at the bottom shows each step.
-10. When it is done, the preview shows the **built SvR model** and the box under the buttons shows the
+10. Click **Port to SvR 2011**. It takes about **one minute**. The bar at the bottom shows each step.
+11. When it is done, the preview shows the **built SvR model** and the box under the buttons shows the
     **report** (see [The report](#the-report)).
-11. Put it in your game: **Install to game…** or **Install as attire…** (see [section 6](#6-put-the-wrestler-in-your-game)).
+12. Put it in your game: **Install to game…** or **Install as attire…** (see [section 6](#6-put-the-wrestler-in-your-game)).
 
 ## 5. The choices on the right, explained
 
 | Choice | What to pick |
 |---|---|
 | **Attire** | the wrestler's look, when there is more than one. |
+| **Entrance outfit** | **None** (walks out in the ring attire), **This attire with all its gear**, or **another attire**. See below. |
 | **Body: Male / Female** | the wrestler's body. It matters for *Classic window* ports. For full-detail ports the model is the same either way. For women, also set a female *base* superstar in the Mod Maker later (see [section 7](#7-share-it-or-edit-it-in-the-mod-maker-svrmod)). |
 | **Model memory** | how much detail the model keeps. See below. |
 | **HD texture size** | (full detail only) how big the HD texture pack is: **4K** (the default, about 21 MB a wrestler), **8K** (sharpest, about 85 MB a wrestler) or **2K** (about 6 MB). Many ported wrestlers at 8K add up to gigabytes. |
@@ -145,6 +150,27 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 | **Mod id** | the mod's folder name (letters, numbers and `_` only). Two mods with the same id replace each other. |
 | **Name in game** | the name shown in the game (up to 31 characters). |
 | **Output folder** | where PortIT saves the finished mods. |
+
+### Entrance outfit and ring attire
+
+SvR 2011 can show a wrestler in one outfit for the entrance and another in the match, as it does for The Undertaker,
+CM Punk or John Cena. PortIT makes both (since 1.2.0):
+
+- **Ring attire**: the attire you picked, with the meshes you leave ticked. This is what the wrestler wears in the match.
+- **Entrance outfit**: a second model, worn only for the entrance. Pick it under **Entrance outfit**:
+  - **This attire with all its gear**: the same attire, with the pieces you take off for the ring. PortIT takes coats,
+    jackets, robes, hoods, hats and caps off the ring attire for you and says so in the status bar - tick a piece
+    again to keep it on in the ring.
+  - **Another attire**: one of the wrestler's other looks.
+- **Ring attire** / **Entrance outfit** at the top right of the preview switch between the two. Each has **its own
+  mesh list** (tick what that outfit wears) and its own picture, before and after porting.
+- Some 2K models have their own entrance pieces, for example `M_Hair_ENT` (*Hair (entrance)*: hair under a hat) or
+  `M_HoodUp` (*Hood up*). They show as **alternate** in the mesh list. Tick one to use it instead of the normal piece.
+  The entrance outfit uses 2K's entrance pieces by default.
+
+Both models go into the same mod (the entrance outfit is stored in `ch.pac` the way the game stores its own). The game
+loads the entrance outfit instead of the ring attire for the entrance, so it gets the same model memory. With **Full
+detail**, the entrance outfit has its own HD texture files too.
 
 ### Model memory
 
@@ -169,6 +195,8 @@ After a port, the report tells you what PortIT did and checked:
 - **game limits: … (the window takes N)**: PortIT checked the model against the limits that crash the game; N is
   how big a model your game can take: 1000 pages with the big-model DLL, 168 without it. A model that would crash
   is never saved.
+- **entrance outfit: … memory pages, in ch.pac as …**: the entrance outfit was built too (with an entrance outfit
+  chosen). Its own checks follow it.
 - **saved as … .svrmod**: the shareable file (see [section 7](#7-share-it-or-edit-it-in-the-mod-maker-svrmod)).
 
 ## 6. Put the wrestler in your game
@@ -255,11 +283,11 @@ When you share a port, please share both files.
 | **The wrestler list stays empty** | check the source folder: for 2K the 2K26 game folder, a folder of 2K wrestler mods or one wrestler's folder (or use **Model folder…**); for AEW the `paks` folder. Then click **Load** again. |
 | **"…packed with Oodle and no WWE 2K game with its oo2core file was found"** | some WWE 2K19 / 2K20 packs are packed with Oodle. PortIT uses the `oo2core_*_win64.dll` of your own WWE 2K19 / 2K20 / 2K24 / 2K25 / 2K26 install (it is never part of PortIT). Install one of these games, or set the environment variable `PORTIT_OODLE_DLL` to the full path of your `oo2core_*_win64.dll`. |
 | **The HD texture pack folder got very big** | choose **HD texture size: 4K** (or 2K) and port again: installing again replaces that wrestler's pack files. Before 1.1.0, porting a wrestler again could leave old pack files behind: in `Texture Packs\<pack>`, delete the `<mod id>_hd_…dds` files of mods you removed or ported again (then install those mods again). |
-| **"Importing the numpy C-extensions failed"** or **"PortIT's Python could not load NumPy / Pillow"** | Windows or your antivirus blocked or removed one of PortIT's files. Use PortIT **1.0.1 or newer** (it unblocks its own files on start). Then: right-click the downloaded zip > **Properties** > tick **Unblock** > **OK**, unzip it again with Windows' own **Extract All** into a new folder, and run PortIT.exe from there. If it still fails, your antivirus probably quarantined a file in `Engine\python` (often `numpy.libs\libscipy_openblas64_….dll`): restore it and add the PortIT folder as an exception. |
-| **Windows 11 "Smart App Control" blocks PortIT** | Smart App Control refuses programs that aren't signed with a paid certificate, and PortIT's Python files are among them. It can only be switched off (Windows Security > App & browser control > Smart App Control), and Windows does not let you switch it back on without resetting Windows, so think before you do it. |
+| **Windows 11 "Smart App Control" blocks PortIT** | Smart App Control refuses programs that aren't signed with a paid certificate, and PortIT is not. It can only be switched off (Windows Security > App & browser control > Smart App Control), and Windows does not let you switch it back on without resetting Windows, so think before you do it. |
 | **"Unimplemented DXGI format 78"** (or 72, 75, 99…) | fixed in PortIT **1.0.1**: some 2K wrestler mods store their textures in an sRGB format the image library didn't read. Update PortIT. |
 | **"ddshash failed"** when porting in full quality | fixed in PortIT **1.0.1** (a small helper program was blocked on some PCs; PortIT doesn't need it any more). Update PortIT. |
-| **"The engine stopped before returning a result"** | the message shows a **Log:** path. Open that `worker.log`: its last lines say what went wrong. Please include it if you report a problem. |
+| **An error message with a "Log:" path** | open that `worker.log`: its last lines say what went wrong. Please include it if you report a problem. |
+| **The wrestler wears his jacket or hat in the match** | untick it in the mesh list, and pick **Entrance outfit: This attire with all its gear** so he still walks out in it (see [Entrance outfit and ring attire](#entrance-outfit-and-ring-attire)). |
 | **"no mouth opening found"** or another face message | some heads are unusual. Try another attire or another version of the wrestler, and please report it. |
 | **The wrestler has low-resolution textures in the game** | the HD texture pack is not switched on: switch it on in the launcher's **Texture packs** list (see [The HD textures](#the-hd-textures)). |
 | **The game crashes when the wrestler is picked** | a full-detail mod made **with** the big-model DLL needs the DLL in the game: check `xinput1_4.dll` and `bigmodel.log` (see [The big-model DLL](#the-big-model-dll-for-full-detail)), and that your game is 2.1.6 or newer. If that's all fine, please report it with the newest file from the game's `logs` folder, `bigmodel.log` and the port's `portit_report.txt`. |
@@ -274,7 +302,7 @@ AEW), the attire, the model memory choice, the report text and the `worker.log`.
 
 | Where | What |
 |---|---|
-| the **Output folder** (you choose it) | the finished mods: `<mod id>\` (the mod folder), `<mod id>.svrmod`, `<mod id>_HD_textures.zip`, `<mod id>_preview.png`, and `_work\` (the steps of the last port). |
+| the **Output folder** (you choose it) | the finished mods: `<mod id>\` (the mod folder), `<mod id>.svrmod`, `<mod id>_HD_textures.zip`, `<mod id>_preview.png` (and `<mod id>_entrance_preview.png` with an entrance outfit), and `_work\` (the steps of the last port). |
 | `%LOCALAPPDATA%\PortIT\k26cache` | 2K26 wrestlers unpacked from the game the first time you open them. Safe to delete; PortIT unpacks them again when needed. |
 | `%LOCALAPPDATA%\PortIT\pac_cache` | WWE 2K19 – 2K22 packs (`chNNNNN.pac`) unpacked the first time you open them. Safe to delete. |
 | `%LOCALAPPDATA%\PortIT\jobs` | one folder per action, with `worker.log` (useful when reporting a problem). Safe to delete. |

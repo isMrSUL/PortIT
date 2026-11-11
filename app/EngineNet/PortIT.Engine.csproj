@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- PortIT's engine in C# (2026-11-11 on): the Python engine (Engine\*.py) ported piece by piece, each piece
+       checked against the Python one on the same files (EngineNet.Check) before PortIT uses it -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>PortIT.Engine</RootNamespace>
+    <AssemblyName>PortIT.Engine</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- BC7 decoding (DirectXTex's, MIT): checked equal to Pillow's on 2K26 maps. SkiaSharp: PNG / JPEG, the version the
+         PortIT window already ships -->
+    <PackageReference Include="Pfim" Version="0.11.3" />
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <!-- XXH3-64: the texture packs name their files by it (k26xxh3.py, ddshash.exe) -->
+    <PackageReference Include="System.IO.Hashing" Version="9.0.0" />
+  </ItemGroup>
+</Project>

@@ -204,6 +204,23 @@ def hair_rgb(char, attire, mesh_name):
     return (90, 70, 50)
 
 
+
+def strand_pieces(m):
+    """separate pieces (connected triangle groups) in a mesh"""
+    tris = np.asarray(m['tris'])
+    parent = np.arange(len(m['verts']))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for a, b, c in tris:
+        ra = find(a)
+        parent[find(b)] = ra
+        parent[find(c)] = ra
+    return len({find(v) for v in np.unique(tris)})
+
 def targets(info, scale):
     """vertices kept per mesh (Brock's tested numbers for the 192-page window, x scale)"""
     T = {}
@@ -378,6 +395,12 @@ def _build(char, attire, out, game, budget, template, log, female, pack_prefix, 
                 if m['name'] in card_t:
                     nc, kc = BM.thin_cards(m, card_t[m['name']])
                     log('%s: cards %d -> %d' % (m['name'], nc, kc))
+                elif not full and m['name'] in R.TARGET and len(m['verts']) > 3 * R.TARGET[m['name']]                         and strand_pieces(m) > 300:
+                    # (solid-textured hair made of strands - a 2K24 Stardust's: ~1,900 separate pieces that no
+                    #  simplifying shrinks below a few points each; the 190-page port stuck at 206 pages and failed.
+                    #  Whole strands are kept, evenly, as for hair cards, 2026-11-11)
+                    nc, kc = BM.thin_cards(m, 2 * R.TARGET[m['name']])
+                    log('%s: strands %d -> %d' % (m['name'], nc, kc))
             return [m for m in meshes if m['name'] not in flat]
         R.PREPARE = prepare
         t0 = time.time()
