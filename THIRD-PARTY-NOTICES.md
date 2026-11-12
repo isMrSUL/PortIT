@@ -82,6 +82,36 @@ MinHook's license beside it) so the app can install it. It is built with
 [MinHook](https://github.com/TsudaKageyu/minhook) 1.3.4 (`bigmodel_dll/minhook`), BSD 2-Clause License,
 Copyright (C) 2009-2017 Tsuda Kageyu; its full license is in `bigmodel_dll/minhook/LICENSE.txt`.
 
+## Kraken decoder (lztans)
+
+`app/EngineNet/Readers/Kraken.cs` is a C# translation of the Kraken decoder of
+[lztans](https://github.com/patodois/lztans) 0.1.1 (dual-licensed MIT OR Apache-2.0; used here under MIT). It unpacks
+the Kraken-compressed blocks of AEW Fight Forever files and WWE 2K19 - 2K22 packs, so no Oodle DLL is needed for them.
+
+```
+MIT License
+
+Copyright (c) 2026 patodois
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Bundled with the release download (not in this repository)
 
 | Component | License |
@@ -95,8 +125,9 @@ NumPy and Pillow.)
 ## Not included
 
 - **No game files** are included. PortIT reads your own copies of the games.
-- **Oodle** (`oo2core_*_win64.dll`, RAD Game Tools / Epic Games) is proprietary and is not part of PortIT. When a
-  WWE 2K19 / 2K20 pack is Oodle-packed, PortIT loads the copy that comes with the user's own WWE 2K game install.
+- **Oodle** (`oo2core_*_win64.dll`, RAD Game Tools / Epic Games) is proprietary and is not part of PortIT. Since 1.2.1
+  PortIT unpacks Kraken itself (see above). The DLL is still used, from the user's own install, for reading the
+  WWE 2K26 game archives, and as a fallback for any pack that uses another Oodle codec.
 
 ## Trademarks
 

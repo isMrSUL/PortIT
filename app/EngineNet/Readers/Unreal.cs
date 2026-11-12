@@ -5,7 +5,7 @@ using System.Text;
 namespace PortIT.Engine.Readers;
 
 /// <summary>UE4 IoStore container (.utoc / .ucas, TOC version 2-3, UE 4.26/4.27), read only - port of iostore.py
-/// (Toc) and ioextract.py (Container). Oodle blocks are unpacked with WWE 2K26's own oo2core DLL.</summary>
+/// (Toc) and ioextract.py (Container). Oodle (Kraken) blocks are unpacked by Kraken.cs (no DLL needed).</summary>
 public sealed class IoContainer : IDisposable
 {
     public readonly string Path;
@@ -130,8 +130,7 @@ public sealed class IoContainer : IDisposable
             else
             {
                 var dst = new byte[usz];
-                long got = Oodle.Decompress(raw.AsSpan(0, csz).ToArray(), csz, dst, usz);
-                if (got != usz) throw new InvalidDataException($"oodle failed on block {bi} ({got} != {usz})");
+                Oodle.Unpack(raw.AsSpan(0, csz).ToArray(), dst, $"block {bi} of {System.IO.Path.GetFileName(Path)}");
                 outb.Write(dst);
             }
         }
@@ -142,9 +141,21 @@ public sealed class IoContainer : IDisposable
     public void Dispose() => ucas.Dispose();
 }
 
-/// <summary>Oodle's decompressor from the user's own WWE 2K26 install (ioextract.py); never part of PortIT</summary>
+/// <summary>Oodle blocks: Kraken (AEW, 2K19 - 2K22) is unpacked by PortIT's own Kraken.cs; anything else falls back to
+/// Oodle's decompressor from the user's own WWE 2K26 install (ioextract.py), which is never part of PortIT</summary>
 public static class Oodle
 {
+    /// <summary>src (one compressed stream) -&gt; dst (exactly the decompressed size)</summary>
+    public static void Unpack(byte[] src, byte[] dst, string what, Func<byte[], long, byte[], long, long>? dll = null)
+    {
+        try { Kraken.Decode(src, dst); return; }
+        catch (NotSupportedException) { }           // (not Kraken: the user's own DLL, when there is one)
+        var big = new byte[dst.Length + 64];
+        long got = (dll ?? Decompress)(src, src.Length, big, dst.Length);
+        if (got != dst.Length) throw new InvalidDataException($"Oodle failed on {what} ({got} != {dst.Length})");
+        Array.Copy(big, dst, dst.Length);
+    }
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     delegate long Fn(byte[] src, long srcLen, byte[] dst, long dstLen, int fuzz, int crc, int verbose,
                      IntPtr dstBase, long dstBaseSize, IntPtr cb, IntPtr cbData, IntPtr decoderMem, long decoderMemSize, int threadPhase);

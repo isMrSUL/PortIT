@@ -610,6 +610,7 @@ public sealed class Port2k
             R.Log.Clear();
             var (_, report) = R.Build(chr, attire, outDir, template);
             foreach (var l in R.Fbx.Report.Concat(R.Log)) print(l);
+            FP.SkinOverGear = R.Fbx.UsedHpl ? 0.10 : double.PositiveInfinity;
             log($"model built: {sw.Elapsed.TotalSeconds:F0} s");
             sw.Restart();
             FP.FixModel(model, cards.Where(n => !flat.Contains(n)).ToList(), template, log);

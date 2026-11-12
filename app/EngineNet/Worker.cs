@@ -19,7 +19,7 @@ namespace PortIT.Engine;
 /// </summary>
 public sealed class Worker
 {
-    public const string Version = "1.2.0";
+    public const string Version = "1.2.1";
     public const string CakPrefix = "cak:", PacPrefix = "pac:";
     readonly Action<string> log;
     readonly CancellationToken cancel;

@@ -1,0 +1,31 @@
+name: Error or crash
+description: PortIT shows an error, stops, or does not start
+title: "[Error] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: error
+    attributes:
+      label: The error
+      description: Copy the full error text, or drag a screenshot of it here.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you do?
+      placeholder: "Chose the AEW paks folder, picked Hikaru Shida, pressed Port to SvR 2011"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PortIT version
+      placeholder: "1.2.1"
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Game and wrestler (if a port failed)
+      placeholder: "WWE 2K19, Sting (ch51302.pac)"

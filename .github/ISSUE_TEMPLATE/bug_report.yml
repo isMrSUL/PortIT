@@ -1,0 +1,84 @@
+name: Bug in a port
+description: A ported wrestler looks or moves wrong (eyes, eyelashes, hair, body, gear, textures...)
+title: "[Bug] <wrestler> (<game>): <short problem>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting! I need to see the same problem on my PC to fix it, so please fill in every part.
+        A good example: *"Rock 1999 from WWE 2K25, attire 1, Full detail. In the game the back of his calves has holes (screenshot). In the PortIT preview it looks fine (screenshot). Files: (link)"*
+  - type: dropdown
+    id: game
+    attributes:
+      label: Which game is the model from?
+      options:
+        - WWE 2K26
+        - WWE 2K25
+        - WWE 2K24
+        - WWE 2K23
+        - WWE 2K22
+        - WWE 2K20
+        - WWE 2K19
+        - AEW Fight Forever
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: wrestler
+    attributes:
+      label: Wrestler and attire
+      placeholder: "Rock 1999, attire 1 (1598_Alt_Attire)"
+    validations:
+      required: true
+  - type: dropdown
+    id: detail
+    attributes:
+      label: Model memory setting
+      options:
+        - Classic
+        - Full detail + HD texture pack
+    validations:
+      required: true
+  - type: checkboxes
+    id: where
+    attributes:
+      label: Where do you see the problem?
+      description: Tick all that apply. Knowing which step breaks it helps a lot.
+      options:
+        - label: In the PortIT preview
+        - label: In the SvR 2011 Mod Maker
+        - label: In the game, standing still
+        - label: In the game, only when the wrestler moves
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong?
+      description: |
+        Be exact: which body part, which side, what it looks like. For example "the left eye looks too high", "the eyelashes are grey boxes", "the toes come out of the boots when he walks".
+    validations:
+      required: true
+  - type: textarea
+    id: shots
+    attributes:
+      label: Screenshots
+      description: Drag pictures here. A close-up of the problem helps most; one from PortIT's preview and one from the game is even better.
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Meshes you unticked, an entrance outfit, the PortIT version, or the full error text if one showed.
+  - type: input
+    id: files
+    attributes:
+      label: Link to the model files (optional, but it helps the most)
+      description: A Google Drive / Mega link to the 2K mod folder or pack. With the same files I can find the real cause much faster.
+  - type: checkboxes
+    id: paid
+    attributes:
+      label: Paid models
+      options:
+        - label: The files I share are not a paid model (Patreon or similar) - or I have the creator's permission.
+          required: true

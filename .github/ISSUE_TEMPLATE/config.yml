@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: User guide
+    url: https://github.com/isMrSUL/PortIT/blob/main/docs/USER_GUIDE.md
+    about: Most questions (how to port, install, what each choice does, known errors) are answered here.

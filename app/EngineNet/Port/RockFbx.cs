@@ -222,9 +222,29 @@ public sealed class RockFbx
         return keep;
     }
 
-    /// <summary>the body skin under the gear removed (rock_fbx.hide_body)</summary>
+    /// <summary>the attire's own hidden-polygon list (2K's .hpl), when it has one: mesh -&gt; vertex indices</summary>
+    public Dictionary<string, int[]>? Hidden;
+    /// <summary>true when the last Build hid M_Body by the attire's own list (then the rest of the skin is meant to show)</summary>
+    public bool UsedHpl;
+
+    /// <summary>the body skin under the gear removed (rock_fbx.hide_body). When the attire has a 2K hidden-polygon list for
+    /// M_Body, exactly the triangles 2K hides (all three corners in the list) go: the guess below hid the back of the calves
+    /// under open-backed boots and the skin under knee / elbow pads, which 2K shows (Rock 1999, 2K25, 2026-11-12). The guess
+    /// stays for models without a list (AEW, mods that ship empty ones).</summary>
     public void HideBody(List<Mesh> meshes)
     {
+        UsedHpl = false;
+        var body = meshes.FirstOrDefault(m => m.Name == "M_Body");
+        if (!QuickRead && body != null && Hidden != null && Hidden.TryGetValue("M_Body", out var list) && list.Length > 0 && list.Max() < body.N)
+        {
+            var h = new bool[body.N];
+            foreach (int i in list) h[i] = true;
+            int nt0 = body.Tris.Length / 3;
+            var keepL = Enumerable.Range(0, nt0).Where(t => !(h[body.Tris[3 * t]] && h[body.Tris[3 * t + 1]] && h[body.Tris[3 * t + 2]])).ToList();
+            Cut(body, keepL, "the attire's hidden-polygon list");
+            UsedHpl = true;
+            return;
+        }
         var gear = meshes.Where(m => !NotGear.Contains(m.Name) && !DropMeshes.Contains(m.Name)).ToList();
         if (gear.Count == 0) return;
         var att = gear.SelectMany(m => m.Tris.SelectMany(v => new[] { m.Verts[3 * v], m.Verts[3 * v + 1], m.Verts[3 * v + 2] })).ToArray();
@@ -243,7 +263,15 @@ public sealed class RockFbx
                 }
             var mid = CoveredInner(cen, cn, att, HideOutCm, HideInCm);
             var keepT = Enumerable.Range(0, nt).Where(t => !(hid[m.Tris[3 * t]] && hid[m.Tris[3 * t + 1]] && hid[m.Tris[3 * t + 2]] && mid[t])).ToList();
-            int n0 = m.N, t0 = nt;
+            Cut(m, keepT, null);
+        }
+    }
+
+    /// <summary>only the kept triangles of m and the vertices they use</summary>
+    void Cut(Mesh m, List<int> keepT, string? why)
+    {
+        {
+            int n0 = m.N, t0 = m.Tris.Length / 3;
             var used = new bool[n0];
             foreach (int t in keepT) for (int k = 0; k < 3; k++) used[m.Tris[3 * t + k]] = true;
             var remap = new int[n0];
@@ -252,7 +280,7 @@ public sealed class RockFbx
             m.Tris = keepT.SelectMany(t => new[] { remap[m.Tris[3 * t]], remap[m.Tris[3 * t + 1]], remap[m.Tris[3 * t + 2]] }).ToArray();
             m.Verts = Pick(m.Verts, used, 3); m.Normals = Pick(m.Normals, used, 3); m.Uv = Pick(m.Uv, used, 2);
             m.Weights = m.Weights.Select(w => (w.Bone, Pick(w.W, used, 1))).Where(w => w.Item2.Length > 0 && w.Item2.Max() > 0).ToList();
-            Report.Add($"M_Body under the gear removed: {n0 - m.N} of {n0} vertices, {t0 - m.Tris.Length / 3} of {t0} triangles");
+            Report.Add($"M_Body under the gear removed{(why != null ? $" ({why})" : "")}: {n0 - m.N} of {n0} vertices, {t0 - m.Tris.Length / 3} of {t0} triangles");
         }
     }
 
@@ -399,6 +427,7 @@ public sealed class RockFbx
                 Report.Add($"{name,-18} {n,6} verts {tris.Length / 3,6} tris  {mat,-12} {tex ?? "None"}  {w.Count} bones");
             }
         }
+        Hidden = Hpl.Read(Path.ChangeExtension(apath, ".hpl"));
         HideBody(meshes);
         return (meshes, bones);
     }

@@ -66,8 +66,12 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
 - **Windows 10 / 11** (64-bit) and the **SvR 2011 PC port** (2.1.6 or newer for full detail; its `pac\ch` stock
   models are the templates).
 - Your own copy of **WWE 2K26**, 2K wrestler mods (2K19 – 2K26), and/or the files of your own **AEW Fight Forever**
-  (PS4). (A few WWE 2K19 / 2K20 packs are Oodle-packed: PortIT then uses the `oo2core` DLL of your own WWE 2K install.)
+  (PS4). No `oo2core` DLL is needed for AEW or 2K19 – 2K22 packs: PortIT unpacks Oodle Kraken itself.
 - The release download has everything else inside.
+
+## Found a bug?
+
+Open a [new issue](https://github.com/isMrSUL/PortIT/issues/new/choose): the form asks for the game, the wrestler, your settings, screenshots and (if you can) the model files - with those I can see the same problem and fix it. Please never share paid models without the creator's permission.
 
 ## Build from source
 

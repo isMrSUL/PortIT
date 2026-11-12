@@ -281,7 +281,7 @@ When you share a port, please share both files.
 |---|---|
 | **"The SvR game folder must have pac\ch"** | choose the game folder itself (the one with `pac`, `Mods`, `svr2011.exe`), not a sub-folder. |
 | **The wrestler list stays empty** | check the source folder: for 2K the 2K26 game folder, a folder of 2K wrestler mods or one wrestler's folder (or use **Model folder…**); for AEW the `paks` folder. Then click **Load** again. |
-| **"…packed with Oodle and no WWE 2K game with its oo2core file was found"** | some WWE 2K19 / 2K20 packs are packed with Oodle. PortIT uses the `oo2core_*_win64.dll` of your own WWE 2K19 / 2K20 / 2K24 / 2K25 / 2K26 install (it is never part of PortIT). Install one of these games, or set the environment variable `PORTIT_OODLE_DLL` to the full path of your `oo2core_*_win64.dll`. |
+| **"…packed with Oodle and no WWE 2K game with its oo2core file was found"** | Since 1.2.1 PortIT unpacks Oodle Kraken itself, so AEW files and WWE 2K19 – 2K22 packs need no `oo2core` file. You see this only for a rare pack that uses another Oodle type. Then PortIT needs the `oo2core_*_win64.dll` of your own WWE 2K install (it is never part of PortIT), or set the environment variable `PORTIT_OODLE_DLL` to its full path. Please report that pack, so it can be supported too. |
 | **The HD texture pack folder got very big** | choose **HD texture size: 4K** (or 2K) and port again: installing again replaces that wrestler's pack files. Before 1.1.0, porting a wrestler again could leave old pack files behind: in `Texture Packs\<pack>`, delete the `<mod id>_hd_…dds` files of mods you removed or ported again (then install those mods again). |
 | **Windows 11 "Smart App Control" blocks PortIT** | Smart App Control refuses programs that aren't signed with a paid certificate, and PortIT is not. It can only be switched off (Windows Security > App & browser control > Smart App Control), and Windows does not let you switch it back on without resetting Windows, so think before you do it. |
 | **"Unimplemented DXGI format 78"** (or 72, 75, 99…) | fixed in PortIT **1.0.1**: some 2K wrestler mods store their textures in an sRGB format the image library didn't read. Update PortIT. |
@@ -297,6 +297,10 @@ When you share a port, please share both files.
 
 To report a problem, open an issue on the [GitHub page](../../../issues) with: the wrestler's name and source (2K26 or
 AEW), the attire, the model memory choice, the report text and the `worker.log`.
+
+### Reporting a bug
+
+Open a [new issue](https://github.com/isMrSUL/PortIT/issues/new/choose) and pick **Bug in a port** or **Error or crash**. The form asks for what I need to see the same problem: the game the model came from, the wrestler and attire, Classic or Full detail, where you see it (PortIT preview, Mod Maker, the game), screenshots and, if you can, a link to the model files. Please never share paid models (Patreon or similar) without the creator's permission.
 
 ## 10. Where PortIT keeps its files
 

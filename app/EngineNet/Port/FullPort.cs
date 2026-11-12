@@ -22,6 +22,11 @@ public sealed class FullPort
     public Dictionary<string, int> Split = [];
     public const double Shallow = 0.30;
     public (double Margin, double Deep) Tuck = (0.04, 0.70);
+    /// <summary>how far skin outside the gear (along the gear's own facing) is still tucked in below it. Unlimited for
+    /// models without a 2K hidden-polygon list; 0.10 (1 cm, against flicker) when the body was cut by the attire's own
+    /// list: 2K shows the rest of the skin, also where it lies over the gear (the back of the calves over an open-backed
+    /// boot's inner panel - tucking it 3 - 7 cm in left a hole, Rock 1999, 2026-11-12)</summary>
+    public double SkinOverGear = double.PositiveInfinity;
     static readonly string[] NotGearPrefix = ["M_Body", "M_Head", "M_EYE", "M_TransB", "M_transB", "M_MouthBag", "mouth_", "M_AEWMouth", "M_InnerMouth", "M_Teeth", "M_Tongue"];
 
     // ---------------------------------------------------------------- model.json access
@@ -629,7 +634,7 @@ public sealed class FullPort
                     on[r] = ok && u >= -1e-6 && w >= -1e-6 && u + w <= 1 + 1e-6;
                 }
                 double tmin = double.PositiveInfinity; bool near = false;
-                for (int r = 0; r < k; r++) if (on[r] && same[r] && tv[r] > -Shallow && tv[r] < margin) { near = true; tmin = Math.Min(tmin, tv[r]); }
+                for (int r = 0; r < k; r++) if (on[r] && same[r] && tv[r] > -Math.Min(Shallow, SkinOverGear) && tv[r] < margin) { near = true; tmin = Math.Min(tmin, tv[r]); }
                 if (near)
                 {
                     for (int c = 0; c < 3; c++) P[3 * v + c] -= d[c] * (margin - tmin);
@@ -639,7 +644,7 @@ public sealed class FullPort
                 // (np.argmax over t where inner, -inf elsewhere: the first largest)
                 int kb = -1; double tb = double.NegativeInfinity;
                 for (int r = 0; r < k; r++)
-                    if (on[r] && tv[r] < 0 && tv[r] > -deep && (kb < 0 || tv[r] > tb)) { tb = tv[r]; kb = r; }
+                    if (on[r] && tv[r] < 0 && tv[r] > -Math.Min(deep, SkinOverGear) && (kb < 0 || tv[r] > tb)) { tb = tv[r]; kb = r; }
                 if (kb < 0) continue;
                 if (same[kb])
                 {

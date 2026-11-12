@@ -64,6 +64,103 @@ int bad = 0, ok = 0;
 var t0 = System.Diagnostics.Stopwatch.StartNew();
 switch (args[0])
 {
+    case "kraken":
+    {
+        // (args[1..]: folders; every Oodle block of each .utoc/.ucas and every OODL/KRKN member of each .pac is unpacked by
+        //  the oo2core DLL and by Readers/Kraken.cs, and the bytes are compared; args "every=N" checks one block in N)
+        int every = 1;
+        var roots = new List<string>();
+        foreach (var a in args.Skip(1)) if (a.StartsWith("every=")) every = int.Parse(a[6..]); else roots.Add(a);
+        long bytesIn = 0, bytesOut = 0;
+        var codecs = new SortedDictionary<string, int>();
+        void One(byte[] src, int csz, int usz, string what)
+        {
+            var a = new byte[usz + 64];
+            long got = Oodle.Decompress(src, csz, a, usz);
+            var b = new byte[usz];
+            string mine;
+            try { Kraken.Decode(src.AsSpan(0, csz), b); mine = "ok"; }
+            catch (Exception ex) { mine = ex.GetType().Name + ": " + ex.Message; }
+            string key = csz >= 2 ? $"b0={src[0]:X2} codec={src[1] & 0x7F}" : "short";
+            codecs[key] = codecs.GetValueOrDefault(key) + 1;
+            if (got != usz) { if (mine == "ok") { bad++; Console.WriteLine($"BAD {what}: the DLL failed ({got}) but C# decoded it"); } else ok++; return; }
+            if (mine != "ok") { bad++; Console.WriteLine($"BAD {what}: {mine}"); return; }
+            if (!a.AsSpan(0, usz).SequenceEqual(b))
+            {
+                int i = 0; while (a[i] == b[i]) i++;
+                bad++; Console.WriteLine($"BAD {what}: bytes differ from {i} of {usz}");
+                return;
+            }
+            ok++; bytesIn += csz; bytesOut += usz;
+        }
+        foreach (var root in roots)
+        {
+            foreach (var utoc in Directory.EnumerateFiles(root, "*.utoc", SearchOption.AllDirectories).Order())
+            {
+                using var c = new IoContainer(utoc);
+                using var ucas = File.OpenRead(Path.ChangeExtension(utoc, ".ucas"));
+                int n = 0;
+                for (int bi = 0; bi < c.Blocks.Count; bi++)
+                {
+                    var (boff, csz, usz, meth) = c.Blocks[bi];
+                    if (c.Methods[meth] == "None" || bi % every != 0) continue;
+                    var raw = new byte[csz];
+                    ucas.Seek(boff, SeekOrigin.Begin);
+                    ucas.ReadExactly(raw);
+                    One(raw, csz, usz, $"{Path.GetFileName(utoc)} block {bi}");
+                    n++;
+                }
+                Console.WriteLine($"{Path.GetFileName(utoc)}: {n} blocks ({c.Methods.Count - 1} methods: {string.Join(",", c.Methods.Skip(1))})  ok {ok} bad {bad}");
+            }
+            foreach (var pac in Directory.EnumerateFiles(root, "*.pac", SearchOption.AllDirectories).Order())
+            {
+                var b = File.ReadAllBytes(pac);
+                int n = 0;
+                var oodl = "OODL"u8.ToArray();
+                for (int o = b.AsSpan().IndexOf(oodl); o >= 0;)
+                {
+                    if (o + 24 <= b.Length && b.AsSpan(o + 12, 4).SequenceEqual("KRKN"u8))
+                    {
+                        int usize = BitConverter.ToInt32(b, o + 16), csize = BitConverter.ToInt32(b, o + 20);
+                        if (o + 24 + csize <= b.Length) { One(b.AsSpan(o + 24, csize).ToArray(), csize, usize, $"{pac} member @{o}"); n++; }
+                    }
+                    int nx = b.AsSpan(o + 4).IndexOf(oodl);
+                    o = nx < 0 ? -1 : o + 4 + nx;
+                }
+                if (n > 0) Console.WriteLine($"{Path.GetFileName(Path.GetDirectoryName(pac))}/{Path.GetFileName(pac)}: {n} Oodle members  ok {ok} bad {bad}");
+            }
+        }
+        foreach (var kv in codecs) Console.WriteLine($"  {kv.Key}: {kv.Value}");
+        Console.WriteLine($"compressed {bytesIn:N0} -> {bytesOut:N0} bytes compared");
+        break;
+    }
+    case "pacextract":
+    {
+        // (args[1]: a folder of chNNNNN.pac files; args[2]: a work cache folder) - each character pack is extracted into
+        //  args[2] and compared, file by file, with PortIT's own cache of it (made earlier, by the oo2core DLL)
+        foreach (var pac in Directory.EnumerateFiles(args[1], "ch*.pac", SearchOption.AllDirectories).Order())
+        {
+            string key = YukesPack.Key(pac), old = Path.Combine(YukesPack.CacheRoot, key);
+            string got = YukesPack.Extract(pac, cacheRoot: args[2]);
+            string mine = Path.Combine(args[2], key);
+            if (!Directory.Exists(old)) { Console.WriteLine($"{pac}: extracted ({Directory.EnumerateFiles(mine, "*", SearchOption.AllDirectories).Count()} files), no old cache to compare"); continue; }
+            var a = Directory.EnumerateFiles(old, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(old, f)).Order().ToList();
+            var b = Directory.EnumerateFiles(mine, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(mine, f)).Order().ToList();
+            int same = 0, diff = 0;
+            foreach (var f in a.Union(b))
+            {
+                var pa = Path.Combine(old, f); var pb = Path.Combine(mine, f);
+                if (File.Exists(pa) && File.Exists(pb) && File.ReadAllBytes(pa).AsSpan().SequenceEqual(File.ReadAllBytes(pb))) same++;
+                else { diff++; Console.WriteLine($"   DIFF {f} (old {File.Exists(pa)}, new {File.Exists(pb)})"); }
+            }
+            Console.WriteLine($"{Path.GetFileName(Path.GetDirectoryName(pac))}/{Path.GetFileName(pac)}: {same} files same, {diff} different");
+            if (diff == 0) ok++; else bad++;
+        }
+        var oo = System.Diagnostics.Process.GetCurrentProcess().Modules.Cast<System.Diagnostics.ProcessModule>()
+            .Where(m => m.ModuleName.StartsWith("oo2core", StringComparison.OrdinalIgnoreCase)).Select(m => m.FileName).ToList();
+        Console.WriteLine("oo2core loaded: " + (oo.Count == 0 ? "no" : string.Join(", ", oo)));
+        break;
+    }
     case "formats":
     {
         using var doc = JsonDocument.Parse(File.ReadAllBytes(args[1]));
@@ -1325,6 +1422,9 @@ switch (args[0])
         var res = new PortIT.Engine.Worker(l => Console.WriteLine("  | " + l)).Run(req);
         Console.WriteLine(res.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         if (res["ok"]?.GetValue<bool>() == true) ok++; else bad++;
+        var oo = System.Diagnostics.Process.GetCurrentProcess().Modules.Cast<System.Diagnostics.ProcessModule>()
+            .Where(m => m.ModuleName.StartsWith("oo2core", StringComparison.OrdinalIgnoreCase)).Select(m => m.FileName).ToList();
+        Console.WriteLine("oo2core loaded: " + (oo.Count == 0 ? "no" : string.Join(", ", oo)));
         break;
     }
     default:

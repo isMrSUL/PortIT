@@ -33,7 +33,7 @@ public static class YukesPack
         catch (IOException) { return false; }
     }
 
-    // ---------------------------------------------------------------- Oodle (the user's own DLL; never part of PortIT)
+    // ---------------------------------------------------------------- Oodle: Kraken.cs; the user's own DLL only for other codecs (never part of PortIT)
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     delegate long OodleDecompress(byte[] src, long srcLen, byte[] dst, long dstLen, int fuzz, int crc, int verbose,
                                   IntPtr dstBase, long dstBaseSize, IntPtr cb, IntPtr cbData, IntPtr decoderMem, long decoderMemSize, int threadPhase);
@@ -87,10 +87,14 @@ public static class YukesPack
             if (o + 24 > b.Length || !b.AsSpan(o + 12, 4).SequenceEqual("KRKN"u8)) continue;
             int usize = (int)U32le(b, o + 16), csize = (int)U32le(b, o + 20);
             var src = b.AsSpan(o + 24, csize).ToArray();
-            var dst = new byte[usize + 64];
-            long got = Oodle()(src, csize, dst, usize, 1, 0, 0, IntPtr.Zero, 0, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 0, 3);
-            if (got != usize) throw new InvalidDataException($"an Oodle member of {System.IO.Path.GetFileName(path)} is damaged");
-            outl.Add(dst[..usize]);
+            var dst = new byte[usize];
+            try
+            {
+                PortIT.Engine.Readers.Oodle.Unpack(src, dst, "pack member",
+                    (s, sl, d, dl) => Oodle()(s, sl, d, dl, 1, 0, 0, IntPtr.Zero, 0, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 0, 3));
+            }
+            catch (InvalidDataException) { throw new InvalidDataException($"an Oodle member of {System.IO.Path.GetFileName(path)} is damaged"); }
+            outl.Add(dst);
             spans.Add((o, o + 24 + csize));
         }
         foreach (int o in Find(b, "JBOY"u8))      // (models stored as they are)
