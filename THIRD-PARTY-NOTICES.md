@@ -37,6 +37,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+PortIT's moving hair (`app/EngineNet/Build/HairChains.cs`) and the 3D view's hair test
+(`app/EngineNet/Port/HairSim.cs`) follow the same project's research notes on how the game moves hair (the chains,
+the hair settings and the hair solver: `port/docs/HAIR_PHYSICS.md`); the C# code is PortIT's own, under the license
+above for what it carries from those notes.
+
 `svr11_skeleton.json` and `prop_bones_stock.json` hold reference numbers (bone positions and rest rotations of the
 stock SvR 2011 skeleton) that the model builder needs; they contain no models, textures or other game assets.
 

@@ -42,9 +42,9 @@ public static class Preview
         return r.Px.Select(b => (float)b).ToArray();
     }
 
-    static (float[] Img, int W, int H) Draw(List<Part> parts, bool negateSide, Func<Part, int, double, double, (bool Keep, double R, double G, double B)> shade)
+    static (float[] Img, int W, int H) Draw(List<Part> parts, bool negateSide, Func<Part, int, double, double, (bool Keep, double R, double G, double B)> shade,
+                                            int W = Width, int H = Height, double topFrac = 1.0)
     {
-        int W = Width, H = Height;
         var img = new float[H * W * 3];
         for (int i = 0; i < H * W; i++) { img[3 * i] = 13; img[3 * i + 1] = 17; img[3 * i + 2] = 24; }
         if (parts.Count == 0) return (img, W, H);
@@ -53,7 +53,7 @@ public static class Preview
         foreach (var p in parts)
             for (int i = 0; i < p.V.Length / 3; i++)
                 for (int c = 0; c < 3; c++) { lo[c] = Math.Min(lo[c], p.V[3 * i + c]); hi[c] = Math.Max(hi[c], p.V[3 * i + c]); }
-        double sc = (H - 50) / Math.Max(hi[1] - lo[1], 1e-6);
+        double sc = (H - 50) / Math.Max((hi[1] - lo[1]) * topFrac, 1e-6);
         double[] light = [0.35, -0.55, -0.75];
         double ln = Blas.Norm(light);
         for (int c = 0; c < 3; c++) light[c] /= ln;
@@ -190,6 +190,57 @@ public static class Preview
             return (true, p.Col![at], p.Col[at + 1], p.Col[at + 2]);
         });
         Save(img, W, H, "the built ch.pac  -  front / side", outPath);
+        return outPath;
+    }
+
+    /// <summary>a close-up for checking (not the app's preview): the top topFrac of the model at W x H, the colour from
+    /// the HD texture pack's .dds when given, sampled bilinear</summary>
+    public static string RenderZoom(string pac, string outPath, int W, int H, double topFrac, string? colorDds = null, int attire = 0)
+    {
+        var arc = Epk8.Read(File.ReadAllBytes(pac));
+        var ents = arc.Groups[0].Entries;
+        var blob = ents[Math.Min(attire, ents.Count - 1)].Data;
+        var models = new List<Jboy>();
+        Img? color = null;
+        foreach (var e in Pach.Read(blob))
+        {
+            var raw = Bpe.Unpack(e.Data);
+            if (Jboy.IsJboy(raw) && e.Id is 0 or 0x2710 or 0x4e20) models.Add(Jboy.Read(raw));
+            else if (color == null && colorDds == null && Bundle.IsBundle(raw))
+                foreach (var (name, dds) in SvrBuilder.TexBundleRead(raw))
+                    if (name == "color" && dds.Length >= 4 && dds.AsSpan(0, 4).SequenceEqual("DDS "u8))
+                        try { color = ImageIO.Decode(dds).ToRgba(); } catch (Exception) { }
+        }
+        if (colorDds != null) color = ImageIO.Decode(File.ReadAllBytes(colorDds)).ToRgba();
+        float[]? col = color != null ? Floats(color) : null;
+        int cw = color?.W ?? 1, ch = color?.H ?? 1;
+        var parts = new List<Part>();
+        foreach (var m in models)
+            foreach (var me in m.Meshes)
+            {
+                var T = TrisOf(me);
+                if (T.Length == 0) continue;
+                var p = new Part { T = T, Textured = col != null, Col = col, Cw = cw, Ch = ch };
+                p.V = me.Verts.SelectMany(v => new double[] { v.PosNrm[0], v.PosNrm[1], v.PosNrm[2] }).ToArray();
+                p.N = me.Verts.SelectMany(v => new double[] { v.PosNrm[3], v.PosNrm[4], v.PosNrm[5] }).ToArray();
+                p.UV = me.Uvs.SelectMany(uv => new double[] { uv.U, uv.V }).ToArray();
+                p.CutAt = (me.U88 & 0x110) != 0 ? 90 : -1;
+                parts.Add(p);
+            }
+        double Tap(float[] c, int x, int y, int k) => c[4 * (Math.Clamp(y, 0, ch - 1) * cw + Math.Clamp(x, 0, cw - 1)) + k];
+        double Bil(float[] c, double fx, double fy, int k)
+        {
+            int x0 = (int)Math.Floor(fx), y0 = (int)Math.Floor(fy); double ax = fx - x0, ay = fy - y0;
+            return (Tap(c, x0, y0, k) * (1 - ax) + Tap(c, x0 + 1, y0, k) * ax) * (1 - ay) + (Tap(c, x0, y0 + 1, k) * (1 - ax) + Tap(c, x0 + 1, y0 + 1, k) * ax) * ay;
+        }
+        var (img, _, _) = Draw(parts, true, (p, _, u, v) =>
+        {
+            if (!p.Textured) return (true, 235.0, 235.0, 240.0);
+            double fx = u * (cw - 1), fy = v * (ch - 1);
+            if (p.CutAt >= 0 && !(Bil(p.Col!, fx, fy, 3) > p.CutAt)) return (false, 0, 0, 0);
+            return (true, Bil(p.Col!, fx, fy, 0), Bil(p.Col!, fx, fy, 1), Bil(p.Col!, fx, fy, 2));
+        }, W, H, topFrac);
+        Save(img, W, H, "", outPath);
         return outPath;
     }
 

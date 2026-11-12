@@ -1415,6 +1415,292 @@ switch (args[0])
         }
         break;
     }
+    case "hairrig":
+    {
+        // (args: a folder of stock chNNN.pac) - per pac: the parts, the hair model's (0x2710) bones, and the text parts
+        foreach (var pac in Directory.EnumerateFiles(args[1], "ch*.pac").Order().Take(args.Length > 2 ? int.Parse(args[2]) : 999))
+        {
+            try
+            {
+                var arc = Epk8.Read(File.ReadAllBytes(pac));
+                var blob = arc.Groups[0].Entries[0].Data;
+                var ids = new List<string>();
+                foreach (var e in Pach.Read(blob))
+                {
+                    ids.Add(e.Id.ToString("x4"));
+                    var raw = Bpe.Unpack(e.Data);
+                    if (e.Id == 0x2710 && Jboy.IsJboy(raw))
+                    {
+                        var j = Jboy.Read(raw);
+                        Console.WriteLine($"{Path.GetFileName(pac)} 2710: {j.Nodes.Count} bones: " + string.Join(" ", j.Nodes.Select(n => n.Name)));
+                        Console.WriteLine($"   meshes {j.Meshes.Count}, verts {j.Meshes.Sum(m => m.Verts.Count)}, shaders " + string.Join(",", j.Meshes.Select(m => m.Shader).Distinct()));
+                    }
+                    if (e.Id == 0x2710 && args.Length > 4 && Jboy.IsJboy(raw))
+                    {
+                        var j = Jboy.Read(raw);
+                        foreach (var n in j.Nodes.Where(n => n.Name.StartsWith("kami_b0") || n.Name is "atama" or "kubi"))
+                            Console.WriteLine($"   node {n.Name,-14} parent {(n.Parent < j.Nodes.Count ? j.Nodes[n.Parent].Name : n.Parent.ToString())} T [{string.Join(", ", n.T.Select(x => x.ToString("F4")))}] R [{string.Join(", ", n.R.Select(x => x.ToString("F4")))}] U40 {n.U40:x} U44 {n.U44} U48 [{string.Join(",", n.U48.Select(x => x.ToString("x")))}] S [{string.Join(", ", n.Sphere.Select(x => x.ToString("F3")))}]");
+                        foreach (var m in j.Meshes) Console.WriteLine($"   mesh {m.Shader} verts {m.Verts.Count} palette [{string.Join(",", m.Palette.Select(p => p < j.Nodes.Count + 1 && p > 0 ? j.Nodes[p - 1].Name : p.ToString()))}] blocks {m.Weights.Count}");
+                    }
+                    if (e.Id is 0x3c or 0x3d && args.Length > 3)
+                        Console.WriteLine($"   {e.Id:x4}: " + System.Text.Encoding.Latin1.GetString(raw).Replace("\r", "").Replace("\n", " | "));
+                    if (e.Id is 0x28 or 0x32 && args.Length > 3)
+                        Console.WriteLine($"   {e.Id:x4}: " + System.Text.Encoding.Latin1.GetString(raw).Replace("\r", "").Replace("\n", " | ")[..Math.Min(400, raw.Length)]);
+                }
+                Console.WriteLine($"{Path.GetFileName(pac)} parts: " + string.Join(",", ids));
+            }
+            catch (Exception ex) { Console.WriteLine($"{Path.GetFileName(pac)}: {ex.Message}"); }
+        }
+        ok++;
+        break;
+    }
+    case "meshsurvey":
+    {
+        // (args: folder of stock ch*.pac) - per (child, shader, U88, word +0x60, word +0x64, vfmt): how many meshes
+        var count = new Dictionary<string, int>();
+        foreach (var pac in Directory.EnumerateFiles(args[1], "ch*.pac"))
+            try
+            {
+                foreach (var e in Pach.Read(Epk8.Read(File.ReadAllBytes(pac)).Groups[0].Entries[0].Data))
+                {
+                    var raw = Bpe.Unpack(e.Data);
+                    if (!Jboy.IsJboy(raw)) continue;
+                    foreach (var m in Jboy.Read(raw).Meshes)
+                    {
+                        string k = $"{e.Id:x4} {m.Shader,-12} U88 {m.U88:x3} w60 {m.U5c[1]} w64 {m.U5c[2]} vfmt {m.Vfmt}";
+                        count[k] = count.GetValueOrDefault(k) + 1;
+                    }
+                }
+            }
+            catch (Exception) { }
+        foreach (var kv in count.OrderBy(kv => kv.Key)) Console.WriteLine($"{kv.Value,6}  {kv.Key}");
+        ok++;
+        break;
+    }
+    case "ddsinfo":
+    {
+        // (args: pac or dds...) - each colour dds: size, mip count, format
+        foreach (var f in args.Skip(1))
+        {
+            var list = new List<(string, byte[])>();
+            if (f.EndsWith(".dds", StringComparison.OrdinalIgnoreCase)) list.Add((Path.GetFileName(f), File.ReadAllBytes(f)));
+            else
+                foreach (var e in Pach.Read(Epk8.Read(File.ReadAllBytes(f)).Groups[0].Entries[0].Data))
+                {
+                    var raw = Bpe.Unpack(e.Data);
+                    if (Bundle.IsBundle(raw)) foreach (var (n, d) in PortIT.Engine.Build.SvrBuilder.TexBundleRead(raw)) list.Add(($"{Path.GetFileName(f)}:{e.Id:x}:{n}", d));
+                }
+            foreach (var (n, d) in list)
+                if (d.Length > 128 && d.AsSpan(0, 4).SequenceEqual("DDS "u8))
+                    Console.WriteLine($"{n}: {BitConverter.ToInt32(d, 16)}x{BitConverter.ToInt32(d, 12)} mips {BitConverter.ToInt32(d, 28)} fourcc {System.Text.Encoding.ASCII.GetString(d, 84, 4)} flags {BitConverter.ToInt32(d, 8):x}");
+        }
+        ok++;
+        break;
+    }
+    case "mipcheck":
+    {
+        // (args: pac out_prefix color.dds) - the face drawn with the HD colour at full size and box-shrunk 4x (a mip the
+        // game may use), cut at 90 and at 8
+        var sc = PortIT.Engine.Port.Viewer3D.Load(args[1], 0, args[3]);
+        var full = sc.Tex!; int tw = sc.TW, th = sc.TH;
+        int k = 4, w2 = tw / k, h2 = th / k;
+        var small = new byte[w2 * h2 * 4];
+        for (int y = 0; y < h2; y++) for (int x = 0; x < w2; x++) for (int c = 0; c < 4; c++)
+        {
+            int sum = 0;
+            for (int dy = 0; dy < k; dy++) for (int dx = 0; dx < k; dx++) sum += full[4 * ((y * k + dy) * tw + x * k + dx) + c];
+            small[4 * (y * w2 + x) + c] = (byte)(sum / (k * k));
+        }
+        foreach (var (name, tex, w, h, aref) in new[] { ("full90", full, tw, th, 90), ("mip90", small, w2, h2, 90), ("mip8", small, w2, h2, 8), ("full8", full, tw, th, 8) })
+        {
+            sc.Tex = tex; sc.TW = w; sc.TH = h; PortIT.Engine.Port.Viewer3D.AlphaRef = aref;
+            var bg = PortIT.Engine.Port.Viewer3D.Draw(sc, 700, 800, new PortIT.Engine.Port.Viewer3D.Camera { Zoom = 4.5, PanY = 800 * 0.92 * 4.5 * 0.42 });
+            var im = new Img(700, 800, 3);
+            for (int i = 0; i < 700 * 800; i++) { im.Px[3 * i] = bg[4 * i + 2]; im.Px[3 * i + 1] = bg[4 * i + 1]; im.Px[3 * i + 2] = bg[4 * i]; }
+            ImageIO.SavePng(im, $"{args[2]}_{name}.png");
+        }
+        ok++;
+        break;
+    }
+    case "hairalpha":
+    {
+        // (args: pac) - the colour sheet's alpha under the hair meshes' (0x2710, cut-out) UVs: a histogram in 16 steps
+        var arc = Epk8.Read(File.ReadAllBytes(args[1]));
+        Img? col = null; var hairUv = new List<(float, float)>();
+        foreach (var e in Pach.Read(arc.Groups[0].Entries[0].Data))
+        {
+            var raw = Bpe.Unpack(e.Data);
+            if (Bundle.IsBundle(raw))
+                foreach (var (name, dds) in PortIT.Engine.Build.SvrBuilder.TexBundleRead(raw))
+                    if (name == (args.Length > 2 && args[2] == "normal" ? "normal" : "color")) col = ImageIO.Decode(dds).ToRgba();
+            if (e.Id == 0x2710 && Jboy.IsJboy(raw))
+                foreach (var m in Jboy.Read(raw).Meshes) if ((m.U88 & 0x110) != 0) hairUv.AddRange(m.Uvs.Select(u => (u.U, u.V)));
+        }
+        if (args.Length > 2 && args[2] != "normal") col = ImageIO.Decode(File.ReadAllBytes(args[2])).ToRgba();
+        if (col == null) { Console.WriteLine("no colour"); break; }
+        var hist = new int[16];
+        // (texels inside the hair UVs' bounding boxes is too loose - sample around each UV point instead)
+        foreach (var (u, v) in hairUv)
+            for (int dy = -3; dy <= 3; dy++) for (int dx = -3; dx <= 3; dx++)
+            {
+                int x = Math.Clamp((int)((u - Math.Floor(u)) * col.W) + dx, 0, col.W - 1), y = Math.Clamp((int)((v - Math.Floor(v)) * col.H) + dy, 0, col.H - 1);
+                hist[col.Px[4 * (y * col.W + x) + 3] / 16]++;
+            }
+        long tot = hist.Sum();
+        Console.WriteLine($"{Path.GetFileName(args[1])} {col.W}x{col.H}: " + string.Join(" ", hist.Select((c, i) => $"{i * 16}:{100.0 * c / tot:F0}%")));
+        ok++;
+        break;
+    }
+    case "alphas":
+    {
+        // (args: out.png dds...) - each dds's alpha channel side by side (at most 1024 wide each), and the colour too
+        var ims = args.Skip(2).Select(f => ImageIO.Decode(File.ReadAllBytes(f)).ToRgba()).ToList();
+        int w = 1024, h = 512;
+        var o = new Img(w * ims.Count, h * 2, 3);
+        for (int k = 0; k < ims.Count; k++)
+        {
+            var im = ims[k];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int sx = x * im.W / w, sy = y * im.H / h, si = 4 * (sy * im.W + sx);
+                    int a = 3 * (y * o.W + k * w + x), c = 3 * ((y + h) * o.W + k * w + x);
+                    o.Px[a] = o.Px[a + 1] = o.Px[a + 2] = im.Px[si + 3];
+                    o.Px[c] = im.Px[si]; o.Px[c + 1] = im.Px[si + 1]; o.Px[c + 2] = im.Px[si + 2];
+                }
+            Console.WriteLine($"{Path.GetFileName(args[2 + k])}: {im.W}x{im.H}");
+        }
+        ImageIO.SavePng(o, args[1]);
+        ok++;
+        break;
+    }
+    case "meshparams":
+    {
+        // (args: pac child_hex) - each mesh of that child: shader, flags, params
+        var arc = Epk8.Read(File.ReadAllBytes(args[1]));
+        foreach (var e in Pach.Read(arc.Groups[0].Entries[0].Data))
+        {
+            if (e.Id != Convert.ToUInt32(args[2], 16)) continue;
+            var j = Jboy.Read(Bpe.Unpack(e.Data));
+            foreach (var m in j.Meshes)
+            {
+                Console.WriteLine($"mesh {m.Shader} verts {m.Verts.Count} U88 {m.U88:x} Vfmt {m.Vfmt} Ua0 {m.Ua0:x} U74 {m.U74} raw {Convert.ToHexString(m.Raw)}");
+                if (args.Length > 3) continue;
+                foreach (var p in m.Params) Console.WriteLine($"   {p.Name,-22} t{p.Type:x2} {Convert.ToHexString(p.Value)}");
+            }
+        }
+        ok++;
+        break;
+    }
+    case "hairtest":
+    {
+        // (args: pac out_prefix [color.dds]) - the hair test: rest pose check, then frames of the test motion
+        var sc = PortIT.Engine.Port.Viewer3D.Load(args[1], 0, args.Length > 3 ? args[3] : null);
+        var sim = PortIT.Engine.Port.Viewer3D.Sim(sc)!;
+        Console.WriteLine($"chains {sim.Chains}");
+        // rest: everything not hair must sit exactly where it was built
+        PortIT.Engine.Port.Viewer3D.Pose(sc, sim);
+        foreach (var grp in sc.Parts.GroupBy(p => p.Model))
+        {
+            double worst = 0;
+            foreach (var p in grp) for (int i = 0; i < p.V.Length; i++) worst = Math.Max(worst, Math.Abs(p.PV![i] - p.V[i]));
+            Console.WriteLine($"model {grp.Key:x}: rest pose off by at most {worst:F4} units (hair settles under gravity)");
+        }
+        if (sc.Nodes.TryGetValue(0x2710, out var hn))
+        {
+            int ia = hn.FindIndex(n => n.Name == "atama");
+            var lone = new Dictionary<string, int>();
+            foreach (var p in sc.Parts.Where(p => p.Model == 0x2710))
+                for (int v = 0; v < p.Verts; v++)
+                {
+                    if (p.V[3 * v + 1] < -7.6) continue;              // (only the hair below the neck top)
+                    bool kami = false; string top = ""; float tw = 0;
+                    for (int k = 0; k < 4; k++) { int b = p.Inf[4 * v + k]; if (b < 0) continue; if (hn[b].Name.StartsWith("kami")) kami = true; if (p.Wt[4 * v + k] > tw) { tw = p.Wt[4 * v + k]; top = hn[b].Name; } }
+                    if (!kami) lone[top] = lone.GetValueOrDefault(top) + 1;
+                }
+            Console.WriteLine("hair below the neck on no chain: " + string.Join(", ", lone.Select(kv => $"{kv.Key} {kv.Value}")));
+        }
+        var t1 = System.Diagnostics.Stopwatch.StartNew();
+        for (int f = 1; f <= 150; f++)
+        {
+            sim.Step(1.0);
+            if (f % 30 == 0)
+            {
+                PortIT.Engine.Port.Viewer3D.Pose(sc, sim);
+                foreach (var (vn, yaw) in new[] { ("back", Math.PI), ("side", -1.57) })
+                {
+                    var bgra = PortIT.Engine.Port.Viewer3D.Draw(sc, 800, 800, new PortIT.Engine.Port.Viewer3D.Camera { Yaw = yaw, Zoom = 1.6, PanY = 250 });
+                    var rgb = new Img(800, 800, 3);
+                    for (int i = 0; i < 800 * 800; i++) { rgb.Px[3 * i] = bgra[4 * i + 2]; rgb.Px[3 * i + 1] = bgra[4 * i + 1]; rgb.Px[3 * i + 2] = bgra[4 * i]; }
+                    ImageIO.SavePng(rgb, $"{args[2]}_{f:000}_{vn}.png");
+                }
+                if (f == 60)
+                {
+                    var keep = sc.Parts.ToList();
+                    foreach (var only in new[] { 0, 0x2710, 0x4e20 })
+                    {
+                        sc.Parts = keep.Where(p => p.Model == only).ToList();
+                        var bg = PortIT.Engine.Port.Viewer3D.Draw(sc, 800, 800, new PortIT.Engine.Port.Viewer3D.Camera { Yaw = Math.PI, Zoom = 1.6, PanY = 250 });
+                        var im = new Img(800, 800, 3);
+                        for (int i = 0; i < 800 * 800; i++) { im.Px[3 * i] = bg[4 * i + 2]; im.Px[3 * i + 1] = bg[4 * i + 1]; im.Px[3 * i + 2] = bg[4 * i]; }
+                        ImageIO.SavePng(im, $"{args[2]}_only{only:x}.png");
+                    }
+                    sc.Parts = keep;
+                }
+                foreach (var (P, Tip) in sim.ChainPoints()) Console.Write($"[{Tip[0]:F2} {Tip[1]:F2} {Tip[2]:F2}] ");
+                Console.WriteLine($" frame {f}");
+            }
+        }
+        Console.WriteLine($"150 frames: {t1.ElapsedMilliseconds} ms");
+        ok++;
+        break;
+    }
+    case "view3d":
+    {
+        // (args: pac out_prefix [color.dds]) - the 3D viewer's frames at a few angles, with their times
+        var sw0 = System.Diagnostics.Stopwatch.StartNew();
+        var sc = PortIT.Engine.Port.Viewer3D.Load(args[1], 0, args.Length > 3 ? args[3] : null);
+        Console.WriteLine($"loaded {sc.Verts} verts {sc.Tris} tris, texture {sc.TW}x{sc.TH}: {sw0.ElapsedMilliseconds} ms");
+        var views = new List<(string, double, double, double, bool, bool, double, double)>();
+        if (args.Length > 4)
+            foreach (var v in args[4].Split(';'))
+            {
+                var f = v.Split(',');
+                views.Add((f[0], double.Parse(f[1], System.Globalization.CultureInfo.InvariantCulture), double.Parse(f[2], System.Globalization.CultureInfo.InvariantCulture),
+                           double.Parse(f[3], System.Globalization.CultureInfo.InvariantCulture), true, f.Length > 6 && f[6] == "w",
+                           double.Parse(f[4], System.Globalization.CultureInfo.InvariantCulture), double.Parse(f[5], System.Globalization.CultureInfo.InvariantCulture)));
+            }
+        foreach (var (vn, vy, vp, vz, vs, vw, vpx, vpy) in views)
+        {
+            var cam = new PortIT.Engine.Port.Viewer3D.Camera { Yaw = vy, Pitch = vp, Zoom = vz, Wire = vw, PanX = vpx, PanY = vpy };
+            var bgra = PortIT.Engine.Port.Viewer3D.Draw(sc, 1200, 900, cam, vs);
+            var rgb = new Img(1200, 900, 3);
+            for (int i = 0; i < 1200 * 900; i++) { rgb.Px[3 * i] = bgra[4 * i + 2]; rgb.Px[3 * i + 1] = bgra[4 * i + 1]; rgb.Px[3 * i + 2] = bgra[4 * i]; }
+            ImageIO.SavePng(rgb, $"{args[2]}_{vn}.png");
+        }
+        if (views.Count > 0) { ok++; break; }
+        foreach (var (name, yaw, pitch, zoom, smooth, wire) in new[] { ("front", 0.0, 0.0, 1.0, true, false), ("turn", 0.7, 0.25, 1.0, true, false),
+                                                                      ("back", Math.PI, 0.0, 1.0, false, false), ("face", 0.3, 0.1, 4.5, true, false), ("wire", 0.5, 0.0, 3.0, true, true) })
+        {
+            var cam = new PortIT.Engine.Port.Viewer3D.Camera { Yaw = yaw, Pitch = pitch, Zoom = zoom, Wire = wire, PanY = zoom > 2 ? 900 * 0.92 * zoom * 0.42 : 0 };
+            var t0x = System.Diagnostics.Stopwatch.StartNew();
+            var bgra = PortIT.Engine.Port.Viewer3D.Draw(sc, 1200, 900, cam, smooth);
+            long ms = t0x.ElapsedMilliseconds;
+            var rgb = new Img(1200, 900, 3);
+            for (int i = 0; i < 1200 * 900; i++) { rgb.Px[3 * i] = bgra[4 * i + 2]; rgb.Px[3 * i + 1] = bgra[4 * i + 1]; rgb.Px[3 * i + 2] = bgra[4 * i]; }
+            ImageIO.SavePng(rgb, $"{args[2]}_{name}.png");
+            Console.WriteLine($"{name}: {ms} ms");
+        }
+        ok++;
+        break;
+    }
+    case "zoom":
+    {
+        // (args: pac out.png W H topFrac [color.dds]) - a big close-up render for checking by eye
+        PortIT.Engine.Port.Preview.RenderZoom(args[1], args[2], int.Parse(args[3]), int.Parse(args[4]), double.Parse(args[5], System.Globalization.CultureInfo.InvariantCulture), args.Length > 6 ? args[6] : null);
+        Console.WriteLine(args[2]); ok++;
+        break;
+    }
     case "run":
     {
         // (args[1]: a request json -> the C# worker's answer, printed; progress lines to stdout)

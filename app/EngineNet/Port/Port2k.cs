@@ -19,6 +19,9 @@ public sealed class Port2k
     public const double SolidShare = 0.90, HairLift = 0.75, StrandCut = 0.45, GreenTurnAt = 1.05;
     public readonly HashSet<string> SolidAlpha = [];
     public HashSet<string> LeaveOut = [];
+    /// <summary>moving hair: bone chains for the hair that hangs, swung by the game (Build.HairChains)</summary>
+    public bool MovingHair;
+    public string? HairNote;
     /// <summary>alternate looks to use (an entrance outfit's M_Hair_Entrance...): read as normal meshes</summary>
     public HashSet<string> UseVariants = new(StringComparer.OrdinalIgnoreCase);
     static readonly System.Globalization.CultureInfo Inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -174,6 +177,56 @@ public sealed class Port2k
             l.Add(t);
         }
         NpRandom.Seed7().Shuffle(ids);
+        // (the biggest cards first: they cover the head; a random pick of 1 in 5 left the scalp bare - Marina Shafir,
+        //  2K25, cut to the classic window, GitHub issue 1, 2026-11-12)
+        var area = new Dictionary<int, double>();
+        foreach (var (r, l) in cards)
+        {
+            double s = 0;
+            foreach (int t in l)
+            {
+                int a = tris[3 * t], b = tris[3 * t + 1], c = tris[3 * t + 2];
+                double[] u = [m.Verts[3 * b] - m.Verts[3 * a], m.Verts[3 * b + 1] - m.Verts[3 * a + 1], m.Verts[3 * b + 2] - m.Verts[3 * a + 2]];
+                double[] w = [m.Verts[3 * c] - m.Verts[3 * a], m.Verts[3 * c + 1] - m.Verts[3 * a + 1], m.Verts[3 * c + 2] - m.Verts[3 * a + 2]];
+                double x = u[1] * w[2] - u[2] * w[1], y = u[2] * w[0] - u[0] * w[2], z = u[0] * w[1] - u[1] * w[0];
+                s += Math.Sqrt(x * x + y * y + z * z) / 2;
+            }
+            area[r] = s;
+        }
+        // spread over the head: each next card the one with the most (area x distance to the cards already kept) - the
+        // biggest-first order kept the long braids and left bald patches on top (2026-11-12)
+        var cen = new Dictionary<int, double[]>();
+        foreach (var (r, l) in cards)
+        {
+            var c3 = new double[3]; int cnt = 0;
+            foreach (int t in l) for (int q3 = 0; q3 < 3; q3++) { int v = tris[3 * t + q3]; c3[0] += m.Verts[3 * v]; c3[1] += m.Verts[3 * v + 1]; c3[2] += m.Verts[3 * v + 2]; cnt++; }
+            for (int c = 0; c < 3; c++) c3[c] /= Math.Max(cnt, 1);
+            cen[r] = c3;
+        }
+        {
+            var order = new List<int>(ids.Count);
+            var left = ids.OrderByDescending(c => area[c]).ToList();   // (stable: equal areas keep the shuffled order)
+            var near = left.ToDictionary(c => c, _ => double.PositiveInfinity);
+            while (left.Count > 0)
+            {
+                int bi = 0; double best = double.NegativeInfinity;
+                for (int i = 0; i < left.Count; i++)
+                {
+                    double d = near[left[i]];
+                    double sc = double.IsPositiveInfinity(d) ? area[left[i]] : Math.Sqrt(area[left[i]]) * d;
+                    if (sc > best) { best = sc; bi = i; }
+                }
+                int pick = left[bi]; left.RemoveAt(bi); order.Add(pick);
+                var p = cen[pick];
+                foreach (int c in left)
+                {
+                    var q = cen[c];
+                    double d = Math.Sqrt((p[0] - q[0]) * (p[0] - q[0]) + (p[1] - q[1]) * (p[1] - q[1]) + (p[2] - q[2]) * (p[2] - q[2]));
+                    if (d < near[c]) near[c] = d;
+                }
+            }
+            ids = order;
+        }
         var keepT = new List<int>(); int nv = 0;
         foreach (int c in ids)
         {
@@ -336,6 +389,11 @@ public sealed class Port2k
         return m;
     }
 
+    /// <summary>hair-card vertices in the classic window (1300 left Marina Shafir's braids at 1 in 8 cards)</summary>
+    public const int HairRoom = 2200;
+    /// <summary>the fewest points a gear piece keeps in the classic window (or all it has, when fewer)</summary>
+    public const int GearFloor = 700;
+
     /// <summary>vertices kept per mesh (Brock's tested numbers for the 192-page window, x scale)</summary>
     public static Dictionary<string, int> Targets(Info info, double scale)
     {
@@ -355,10 +413,143 @@ public sealed class Port2k
         foreach (var (n, v) in info.Meshes)
             if (!T.ContainsKey(n) && n.ToLowerInvariant() != "m_eye" && !n.ToLowerInvariant().Contains("eyelash"))
             {
-                T[n] = Math.Max(200, (int)(gearRoom * (double)v / Math.Max(gearTotal, 1)));
+                T[n] = Math.Max(Math.Min(v, GearFloor), (int)(gearRoom * (double)v / Math.Max(gearTotal, 1)));   // (a small top kept its shape: 2203 -> 325 let the skin through, GitHub issue 1)
                 if (HeadGear.Any(k => n.ToLowerInvariant().Contains(k))) T[n] = Math.Max(T[n], Math.Min(v, 1100));
             }
         return T.ToDictionary(kv => kv.Key, kv => Math.Max(150, (int)(kv.Value * scale)));
+    }
+
+    /// <summary>hair cards that lie flat on the skin (left out of the model) painted into the head / body colour map
+    /// under them: each card point takes the skin UV of its nearest skin triangle, the card's own colour + alpha drawn
+    /// there. Marina Shafir (2K25): M_Hair2 is the dark braid base - left out unpainted, the light scalp of the head map
+    /// showed (GitHub issue 1, 2026-11-12). Read from the wrestler's own maps (colorFile: RockModel.FindTex), written to <work>/_painted each build: the shared work
+    /// folder keeps old wrestlers' textures (Big E got an earlier port's face, 2026-11-12).</summary>
+    static void BakeFlatCards(List<RockFbx.Mesh> meshes, List<(RockFbx.Mesh M, double MaxCm)> paint, string outDir, Action<string> log, Dictionary<string, string> overrides, Func<string, string?> colorFile, bool headOnly = false)
+    {
+        static string Base(RockFbx.Mesh m) => m.Material.Split(':')[0];
+        var skins = meshes.Where(m => (m.Name == "M_Head" || m.Name == "M_Body" && !headOnly) && m.Uv.Length / 2 == m.N && colorFile(Base(m)) != null).ToList();
+        if (skins.Count == 0) return;
+        // (all skin points in one list -> mesh / point; per point the triangles that use it)
+        var P = skins.SelectMany(m => m.Verts).ToArray();
+        var owner = new List<(int M, int V)>();
+        for (int si = 0; si < skins.Count; si++) for (int v = 0; v < skins[si].N; v++) owner.Add((si, v));
+        var around = skins.Select(m =>
+        {
+            var l = new List<int>[m.N];
+            for (int v = 0; v < m.N; v++) l[v] = [];
+            for (int t = 0; t < m.Tris.Length / 3; t++) for (int k = 0; k < 3; k++) l[m.Tris[3 * t + k]].Add(t);
+            return l;
+        }).ToList();
+        var maps = new Dictionary<int, Img>();
+        Img MapOf(int si)
+        {
+            if (maps.TryGetValue(si, out var im)) return im;
+            return maps[si] = ImageIO.Load(colorFile(Base(skins[si]))!).ToRgba();
+        }
+        foreach (var (hm, maxCm) in paint)
+        {
+            if (hm.Uv.Length / 2 != hm.N) { log($"{hm.Name}: no texture coordinates - not painted"); continue; }
+            Img card;
+            if (colorFile(Base(hm)) is { } cf) card = ImageIO.Load(cf).ToRgba();
+            else
+            {
+                // (no colour map, no alpha: a one-colour paint made blobs - Adam Cole '20's layer holds his beard too)
+                log($"{hm.Name}: no card colour map - not painted");
+                continue;
+            }
+            var (J, D2) = FullPort.Nearest(hm.Verts, P);
+            // each card point -> (skin mesh, its UV there)
+            var sm = new int[hm.N]; var su = new double[2 * hm.N];
+            for (int i = 0; i < hm.N; i++)
+            {
+                var (si, v0) = owner[J[i]];
+                var m = skins[si];
+                double[] p = [hm.Verts[3 * i], hm.Verts[3 * i + 1], hm.Verts[3 * i + 2]];
+                double best = double.MaxValue, bu = m.Uv[2 * v0], bv = m.Uv[2 * v0 + 1];
+                foreach (int t in around[si][v0])
+                {
+                    int a = m.Tris[3 * t], b = m.Tris[3 * t + 1], c = m.Tris[3 * t + 2];
+                    var (w0, w1, w2, d2) = ClosestOnTri(p, m.Verts, a, b, c);
+                    if (d2 < best)
+                    {
+                        best = d2;
+                        bu = w0 * m.Uv[2 * a] + w1 * m.Uv[2 * b] + w2 * m.Uv[2 * c];
+                        bv = w0 * m.Uv[2 * a + 1] + w1 * m.Uv[2 * b + 1] + w2 * m.Uv[2 * c + 1];
+                    }
+                }
+                sm[i] = si; su[2 * i] = bu; su[2 * i + 1] = bv;
+            }
+            int painted = 0;
+            for (int t = 0; t < hm.Tris.Length / 3; t++)
+            {
+                int a = hm.Tris[3 * t], b = hm.Tris[3 * t + 1], c = hm.Tris[3 * t + 2];
+                if (sm[a] != sm[b] || sm[a] != sm[c]) continue;
+                if (Math.Sqrt(Math.Max(D2[a], Math.Max(D2[b], D2[c]))) > maxCm) continue;   // (only cards lying on the skin)
+                var dst = MapOf(sm[a]);
+                double[] xs = new double[3], ys = new double[3];
+                int[] vi = [a, b, c];
+                for (int k = 0; k < 3; k++) { xs[k] = Frac(su[2 * vi[k]]) * dst.W; ys[k] = (1 - Frac(su[2 * vi[k] + 1])) * dst.H; }   // (the 2K UVs: v up, image rows down)
+                // (a triangle across a UV seam of the skin: its corners land far apart - skipped)
+                if (xs.Max() - xs.Min() > dst.W * 0.08 || ys.Max() - ys.Min() > dst.H * 0.08) continue;
+                double d = (xs[1] - xs[0]) * (ys[2] - ys[0]) - (xs[2] - xs[0]) * (ys[1] - ys[0]);
+                if (Math.Abs(d) < 1e-9) continue;
+                int x0 = Math.Max(0, (int)Math.Floor(xs.Min())), x1 = Math.Min(dst.W - 1, (int)Math.Ceiling(xs.Max()));
+                int y0 = Math.Max(0, (int)Math.Floor(ys.Min())), y1 = Math.Min(dst.H - 1, (int)Math.Ceiling(ys.Max()));
+                for (int py = y0; py <= y1; py++)
+                    for (int px = x0; px <= x1; px++)
+                    {
+                        double gx = px + 0.5, gy = py + 0.5;
+                        double b1 = ((gx - xs[0]) * (ys[2] - ys[0]) - (xs[2] - xs[0]) * (gy - ys[0])) / d;
+                        double b2 = ((xs[1] - xs[0]) * (gy - ys[0]) - (gx - xs[0]) * (ys[1] - ys[0])) / d;
+                        double b0 = 1 - b1 - b2;
+                        if (b0 < -1e-6 || b1 < -1e-6 || b2 < -1e-6) continue;
+                        double u = b0 * hm.Uv[2 * a] + b1 * hm.Uv[2 * b] + b2 * hm.Uv[2 * c];
+                        double v = b0 * hm.Uv[2 * a + 1] + b1 * hm.Uv[2 * b + 1] + b2 * hm.Uv[2 * c + 1];
+                        int cx = Math.Clamp((int)(Frac(u) * card.W), 0, card.W - 1), cy = Math.Clamp((int)((1 - Frac(v)) * card.H), 0, card.H - 1);
+                        int ci = 4 * (cy * card.W + cx), di = 4 * (py * dst.W + px);
+                        double al = card.Px[ci + 3] / 255.0;
+                        if (al <= 0) continue;
+                        for (int k = 0; k < 3; k++) dst.Px[di + k] = (byte)Math.Round(dst.Px[di + k] * (1 - al) + card.Px[ci + k] * al);
+                        painted++;
+                    }
+            }
+            log($"{hm.Name}: {(double.IsPositiveInfinity(maxCm) ? "flat hair cards" : "scalp cards (all, before thinning)")} painted into the skin colour map ({painted} pixels)");
+        }
+        foreach (var (si, im) in maps)
+        {
+            string path = Path.Combine(outDir, "_painted", Base(skins[si]) + "_color.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            ImageIO.SavePng(im, path);
+            overrides[Base(skins[si]) + "_color"] = path;
+        }
+    }
+
+    static double Frac(double x) => x - Math.Floor(x);
+
+    /// <summary>hair-card triangles this close to the skin (all 3 corners) are painted under a thinned hair mesh</summary>
+    public const double ScalpPaintCm = 1.5;
+
+    /// <summary>the cards of a kept hair / beard mesh this close to the skin are painted under it as a base</summary>
+    public const double CardBaseCm = 0.8;
+
+    static RockFbx.Mesh Clone(RockFbx.Mesh m) => new() { Name = m.Name, Material = m.Material, Texture = m.Texture, Verts = m.Verts, Normals = m.Normals, Uv = m.Uv, Tris = m.Tris };
+
+    /// <summary>the closest point of triangle a b c (of the flat point list V) to p: its barycentric weights and squared distance</summary>
+    static (double, double, double, double) ClosestOnTri(double[] p, double[] V, int a, int b, int c)
+    {
+        double[] A = [V[3 * a], V[3 * a + 1], V[3 * a + 2]], B = [V[3 * b], V[3 * b + 1], V[3 * b + 2]], C = [V[3 * c], V[3 * c + 1], V[3 * c + 2]];
+        double[] ab = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], ac = [C[0] - A[0], C[1] - A[1], C[2] - A[2]], ap = [p[0] - A[0], p[1] - A[1], p[2] - A[2]];
+        static double Dot(double[] x, double[] y) => x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
+        double d00 = Dot(ab, ab), d01 = Dot(ab, ac), d11 = Dot(ac, ac), d20 = Dot(ap, ab), d21 = Dot(ap, ac);
+        double den = d00 * d11 - d01 * d01;
+        double w1 = 0, w2 = 0;
+        if (Math.Abs(den) > 1e-12) { w1 = (d11 * d20 - d01 * d21) / den; w2 = (d00 * d21 - d01 * d20) / den; }
+        w1 = Math.Clamp(w1, 0, 1); w2 = Math.Clamp(w2, 0, 1);
+        if (w1 + w2 > 1) { double s = w1 + w2; w1 /= s; w2 /= s; }
+        double w0 = 1 - w1 - w2;
+        double[] q = [w0 * A[0] + w1 * B[0] + w2 * C[0], w0 * A[1] + w1 * B[1] + w2 * C[1], w0 * A[2] + w1 * B[2] + w2 * C[2]];
+        double dx = q[0] - p[0], dy = q[1] - p[1], dz = q[2] - p[2];
+        return (w0, w1, w2, dx * dx + dy * dy + dz * dz);
     }
 
     public static List<string> CardMeshes(Info info)
@@ -569,27 +760,42 @@ public sealed class Port2k
             foreach (var n in cards) R.Kind[n] = "hair";
         }
         int cap = full ? FullPort.WindowPages(game, log) : 0;
-        double scale = 1.0;
+        // (no big-model DLL - the game's 768 KB: a full-detail port is shared out like the classic window, the face and
+        //  body first, not every mesh cut by the same factor - the face went 4310 -> 593 points, GitHub issue 1, 2026-11-12)
+        bool small = full && cap < 300;
+        double scale = small ? Math.Min(1.0, cap / 190.0) : 1.0;
         var rawCount = info.Meshes.ToDictionary(x => x.Name, x => x.Verts);
         for (int attempt = 0; attempt < 6; attempt++)
         {
             var cardT = new Dictionary<string, int>();
-            if (!full)
+            if (!full || small)
             {
                 var T = Targets(info, scale);
                 foreach (var n in T.Keys.ToList())
-                    if (cards.Contains(n)) { cardT[n] = Math.Max(300, (int)(1300 * scale)); T.Remove(n); }
+                    if (cards.Contains(n)) { cardT[n] = Math.Max(300, (int)(Math.Min(rawCount[n], HairRoom) * scale)); T.Remove(n); }
                 R.Target = T;
             }
             else if (scale < 1.0)
             {
                 R.Target = info.Meshes.Where(x => !cards.Contains(x.Name)).ToDictionary(x => x.Name, x => Math.Max(150, (int)(x.Verts * scale)));
-                foreach (var n in cards) cardT[n] = Math.Max(300, (int)(rawCount[n] * scale));
+                foreach (var n in cards) cardT[n] = Math.Max(300, (int)(rawCount[n] * Math.Sqrt(scale)));   // (hair cut less than the rest: it vanished at x0.2, GitHub issue 1)
             }
             var ct = cardT;
             R.Prepare = (meshes, bones) =>
             {
                 int head = bones.FindIndex(b => b.Src == "J_Head");
+                // (painted into the skin map before thinning: the flat cards, and the scalp cards a cut-down port thins -
+                //  the gaps then show hair, not the light scalp of the head map; GitHub issue 1, 2026-11-12)
+                var paint = new List<(RockFbx.Mesh, double)>();
+                foreach (var m in meshes)
+                    if (flat.Contains(m.Name)) paint.Add((Clone(m), double.PositiveInfinity));
+                    else if (ct.ContainsKey(m.Name)) paint.Add((Clone(m), ScalpPaintCm));
+                    // (every other card mesh - a beard, the hair at the hairline: its cards lying on the skin painted under
+                    //  them too, so the gaps between the strands show hair, not bare skin - Seth Rollins' beard looked
+                    //  see-through in game, 2026-11-12)
+                    else if (cards.Contains(m.Name)) paint.Add((Clone(m), CardBaseCm));
+                R.TexOverride.Clear();
+                if (paint.Count > 0) BakeFlatCards(meshes, paint, outDir, log, R.TexOverride, t => R.FindTex(chr, attire, t, "_color"), headOnly: MovingHair);   // (moving hair: flat braid ends painted on the back would stay there while the braids swing)
                 foreach (var m in meshes)
                 {
                     if (m.Weights.Count == 0) { var one = new double[m.N]; Array.Fill(one, 1.0); m.Weights.Add((head, one)); }
@@ -614,11 +820,30 @@ public sealed class Port2k
             log($"model built: {sw.Elapsed.TotalSeconds:F0} s");
             sw.Restart();
             FP.FixModel(model, cards.Where(n => !flat.Contains(n)).ToList(), template, log);
+            {
+                // (the builder's own colour sheet: the hair cards' cells, cut hard in every level as the HD pack -
+                //  Seth Rollins' beard came out big and blocky in game, 2026-11-12)
+                var mj = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(model))!;
+                var cc = info.Cutout.Where(t => R.Cells.ContainsKey(t)).Select(t => R.Cells[t]).ToList();
+                foreach (var at in mj["attires"]!.AsArray())
+                {
+                    if (MovingHair) at!["hair_physics"] = true;
+                    if (cc.Count > 0)
+                    {
+                        at!["cut_cells"] = new System.Text.Json.Nodes.JsonArray(cc.Select(c => (System.Text.Json.Nodes.JsonNode?)new System.Text.Json.Nodes.JsonArray(c.Item1, c.Item2, c.Item3, c.Item4)).ToArray());
+                        at["cut_sheet"] = new System.Text.Json.Nodes.JsonArray(R.Sheet.W, R.Sheet.H);
+                    }
+                }
+                File.WriteAllText(model, mj.ToJsonString());
+            }
             log($"weights fixed: {sw.Elapsed.TotalSeconds:F0} s");
             sw.Restart();
             var rep = PortIT.Engine.Build.SvrBuilder.Run(model, pac, full);
             log($"ch.pac built: {sw.Elapsed.TotalSeconds:F0} s");
             if (rep["ok"]?.GetValue<bool>() != true) throw new InvalidOperationException(rep["error"]?.GetValue<string>() ?? "build failed");
+            HairNote = null;
+            foreach (var w in rep["warnings"] as System.Text.Json.Nodes.JsonArray ?? [])
+                if (w?.GetValue<string>() is { } ws && ws.StartsWith("moving hair")) { log(ws); HairNote = ws; }
             int pages = rep["attires"]![0]!["pages"]!.GetValue<int>();
             if (full && pages > cap && attempt < 5)
             {
@@ -664,6 +889,10 @@ public sealed class Port2k
             report.Add($"checks: {checks.FaceOver} face vertices swing past the stock head, {checks.GearOver} gear vertices drift from the skin{(checks.Notes.Count == 0 ? "" : " - " + string.Join("; ", checks.Notes.Take(6)))}");
             log(report[^1]);
             if (LeaveOut.Count > 0) report.Add("left out by you: " + string.Join(", ", LeaveOut.Order(StringComparer.Ordinal)));
+            if (HairNote != null) report.Add(HairNote);
+            if (full && cap <= 768 / 4 - 24)
+                report.Add($"cut down to {cap} pages: the game has not used PortIT's big-model DLL yet (no bigmodel.log in the game folder, " +
+                           "or it shows the normal 768 KB) - hair is thinner and clothes rougher. Install the DLL, start the game once, then port again for the full model");
             if (flat.Count > 0) report.Add("left out (painted on the head texture): " + string.Join(", ", flat.Order(StringComparer.Ordinal)));
             var pack = new List<string>();
             if (full)

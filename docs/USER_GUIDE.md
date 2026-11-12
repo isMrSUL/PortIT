@@ -147,6 +147,7 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 | **Model memory** | how much detail the model keeps. See below. |
 | **HD texture size** | (full detail only) how big the HD texture pack is: **4K** (the default, about 21 MB a wrestler), **8K** (sharpest, about 85 MB a wrestler) or **2K** (about 6 MB). Many ported wrestlers at 8K add up to gigabytes. |
 | **Face animation** | leave it **on**. The wrestler then talks, yells and sells with the game's own face animations. |
+| **Moving hair (test)** | long hair, ponytails and braids swing in matches, like the game's own long-haired superstars. New in 1.3.0 and off by default: try it, and if a match ever hangs on loading, port again with it off and tell us. See [Moving hair](#moving-hair-test). |
 | **Mod id** | the mod's folder name (letters, numbers and `_` only). Two mods with the same id replace each other. |
 | **Name in game** | the name shown in the game (up to 31 characters). |
 | **Output folder** | where PortIT saves the finished mods. |
@@ -176,11 +177,37 @@ detail**, the entrance outfit has its own HD texture files too.
 
 | Option | Use it when |
 |---|---|
-| **Full detail + HD texture pack (game 2.1.6+)** | **The best choice for game 2.1.6 and newer with the [big-model DLL](#the-big-model-dll-for-full-detail).** Every vertex of the source model is kept, and every texture is saved at its full size in a texture pack. Six such wrestlers have played a 6-man match at 60 fps. Without the DLL, PortIT shrinks the model to the game's normal memory (the report then says *no big-model DLL found*). |
+| **Full detail + HD texture pack (game 2.1.6+)** | **The best choice for game 2.1.6 and newer with the [big-model DLL](#the-big-model-dll-for-full-detail).** Every vertex of the source model is kept, and every texture is saved at its full size in a texture pack. Six such wrestlers have played a 6-man match at 60 fps. Without the DLL, PortIT asks you first: install it, or port a smaller model (the face and body keep the most detail; the report then says *cut down to 168 pages*). Installed but not yet used by the game? Start the game once, then port. |
 | **Bigger window - 500 pages** | an older game build with a larger model window. Most people don't need it. |
 | **Classic window - 190 pages (every game version)** | your game is **older than 2.1.6**. The model is simplified until it fits the old memory limit, and the textures are smaller. |
 
 PortIT reads your game's log and picks the right option for you when it can.
+
+### The 3D view
+
+After a port, click the preview picture (or **3D view**) to open the built model in 3D, with its HD textures:
+
+- **Left-drag** turns it, **right-drag** (or Shift + drag) moves it, the **wheel** zooms to the mouse, **double-click**
+  or **Home** resets.
+- Keys as in Blender: **1** front, **3** side, **Ctrl+1** back, **7** top, **F** a close look at the face,
+  **W** wireframe, **T** textures, **L** lights.
+- **Entrance outfit** shows the other outfit, when the port has one.
+
+### Moving hair (test)
+
+With **Moving hair** ticked, PortIT finds the hair that hangs below the jaw (long hair, ponytails, braids) and gives it
+bone chains like the game's own long-haired superstars, with the game's hair settings and the body's collision shapes
+(so the hair stays out of the shoulders). Hair on top of the head stays on the head; bangs and beards in front of the
+face don't swing. Pieces worn on the hair (hair ties, beads) move with it. The report says how many chains were made.
+
+Try it in the **3D view** before playing:
+
+- **Hair: head moves** (key **H**): the head turns and nods, the hair swings - worked out with the game's own hair
+  maths.
+- **Hair: you turn it** (key **J**): turn the wrestler with the mouse or the arrow keys and watch the hair react, like
+  holding him in your hand. Tip him over and the hair falls the other way.
+
+It is new: if a match with the wrestler hangs on loading or crashes, port again with Moving hair off and tell us.
 
 ### The report
 
@@ -251,6 +278,7 @@ Every port is also saved, next to its folder in the output folder, as:
 |---|---|
 | `<mod id>.svrmod` | the mod in the game's own mod format. Other players install it with the **launcher** (Mods tab). |
 | `<mod id>_HD_textures.zip` | the HD textures (full-detail ports only). Unzip it into the game's `Texture Packs` folder, then switch the pack on in the launcher's **Texture packs** list. |
+| `<mod id> - SHARE THIS (model + HD textures).zip` | both of the above in one file, with a short install note. **Share this one.** |
 
 **Edit it in the Mod Maker:** open the `.svrmod` in the SvR 2011 **Mod Maker** to change the name, the stats
 (ratings), the abilities, the moves, the entrance, the theme music, the select pictures and more. PortIT gives every
@@ -259,7 +287,8 @@ port simple starting values (all ratings 80, the base superstar 125), so it is w
 **For women:** in the Mod Maker, set the **base** to a female superstar. The base gives the moves, the entrance
 motions and other per-character data.
 
-When you share a port, please share both files.
+When you share a port, share the **SHARE THIS** zip: people often shared the `.svrmod` alone and forgot the HD
+textures.
 
 ## 8. Tips and limits
 

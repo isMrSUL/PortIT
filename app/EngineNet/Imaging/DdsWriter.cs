@@ -21,6 +21,10 @@ public static class DdsWriter
     /// <summary>(checks: the picture and the cut cells handed to <see cref="Levels"/>)</summary>
     public static Action<Img, IReadOnlyList<(int X, int Y, int W, int H)>?>? OnLevels;
 
+    /// <summary>a hair card's pixel at or over this alpha is solid, under it clear (96 left Seth Rollins' beard thin and
+    /// see-through in game; 48 keeps more of each strand)</summary>
+    public const int CutAt = 48;
+
     public static byte[] Levels(Img img, string fourcc, IReadOnlyList<(int X, int Y, int W, int H)>? cutCells)
     {
         OnEncode?.Invoke(img, fourcc);
@@ -33,7 +37,9 @@ public static class DdsWriter
         for (int k = 0; k < mips; k++)
         {
             var lv = k == 0 ? top : Resample.ResizeApart(top, Math.Max(1, w >> k), Math.Max(1, h >> k));
-            if (cutCells != null && k > 0)
+            // (every level, the top too: the game keeps faint alpha, so a soft strand edge or a Lanczos ring showed as a
+            //  solid block of card - Seth Rollins' beard, 2026-11-12)
+            if (cutCells != null)
             {
                 lv = lv.Copy();
                 foreach (var (x, y, cw, ch) in cutCells)
@@ -44,7 +50,7 @@ public static class DdsWriter
                         for (int xx = x0; xx < Math.Min(x1, lv.W); xx++)
                         {
                             int i = (yy * lv.W + xx) * 4 + 3;
-                            lv.Px[i] = lv.Px[i] >= 96 ? (byte)255 : (byte)0;
+                            lv.Px[i] = lv.Px[i] >= CutAt ? (byte)255 : (byte)0;
                         }
                 }
             }

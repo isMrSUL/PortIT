@@ -82,6 +82,10 @@
               <TextBlock Classes="faint" Text="PREVIEW" FontWeight="SemiBold" />
               <TextBlock x:Name="PreviewTitle" FontWeight="SemiBold" Foreground="{StaticResource AccentHi}" />
             </StackPanel>
+            <!-- the built model in 3D: turned with the mouse like Blender (the user's request 2026-11-12) -->
+            <Button x:Name="View3DButton" Content="3D view" IsEnabled="False" Margin="16,12" Padding="14,6"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom" Classes="accent"
+                    ToolTip.Tip="Open the built model in 3D: turn it with the mouse, zoom in close, see it from any side (like Blender)" />
             <!-- the two outfits: what he wears in the ring, what he walks out in (each with its own meshes and picture) -->
             <StackPanel x:Name="OutfitBar" Margin="16,12" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal" Spacing="6" IsVisible="False">
               <ToggleButton x:Name="OutfitRing" Content="Ring attire" IsChecked="True" Classes="chip"
@@ -160,6 +164,8 @@
                         ToolTip.Tip="The size of the HD texture pack a full-detail port writes: smaller saves disk space, larger is sharper" />
             </StackPanel>
             <CheckBox x:Name="FaceCheck" Content="Face animation (weights from a stock SvR head)" IsChecked="True" />
+            <CheckBox x:Name="HairCheck" Content="Moving hair (test)" IsChecked="False"
+                      ToolTip.Tip="Long hair swings in matches, like the game's own long-haired wrestlers: PortIT adds hair bones (kami_b chains) and the game's hair settings. Try it in the 3D view's Hair test first. New: if a match hangs on loading or crashes, port again with this off and tell us." />
             <Grid ColumnDefinitions="*,8,*">
               <StackPanel Spacing="3">
                 <TextBlock Classes="label" Text="Mod id" />

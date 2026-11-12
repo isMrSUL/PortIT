@@ -393,8 +393,12 @@ public sealed class RockModel
     }
 
     // ---------------------------------------------------------------- textures
+    /// <summary>(texture name + suffix, e.g. head_color) -&gt; a file used in its place: the head map with hair painted in</summary>
+    public Dictionary<string, string> TexOverride = new(StringComparer.OrdinalIgnoreCase);
+
     public string? FindTex(string chr, string attire, string bas, string suffix)
     {
+        if (TexOverride.TryGetValue(bas + suffix, out var over) && File.Exists(over)) return over;
         foreach (var folder in TexFirst.Concat([Path.Combine(chr, attire, "Textures"), Path.Combine(chr, "BaseModel", "Textures")]))
         {
             if (!Directory.Exists(folder)) continue;
@@ -402,7 +406,9 @@ public sealed class RockModel
                 if (Path.GetFileName(f).ToLowerInvariant().Split('.')[0] == (bas + suffix).ToLowerInvariant()) return f;
         }
         var a = Fbx.TexAlias.GetValueOrDefault(bas.ToLowerInvariant())?.GetValueOrDefault(suffix);
-        return a != null && File.Exists(a) ? a : null;
+        if (a != null && File.Exists(a)) return a;
+        // (hair_ALPHA -> hair_color.DDS, as RockFbx.TextureFor)
+        return Regex.IsMatch(bas, "(?i)_alpha$") ? FindTex(chr, attire, Regex.Replace(bas, "(?i)_alpha$", ""), suffix) : null;
     }
 
     /// <summary>a texture fitted into a cell (gutter of edge colour): RGB and A resized apart; normal maps: x, y kept,

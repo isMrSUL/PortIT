@@ -14,6 +14,7 @@ internal static class Program
             return Render.Window(args[1], args.Length > 2 ? double.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture) : 4, 1500, 920,
                                  args.Length > 3 ? args[3] : null,
                                  args.Length > 4 ? double.Parse(args[4], System.Globalization.CultureInfo.InvariantCulture) : 20);
+        if (args.Length == 3 && args[0] == "--shot-3d") return Render.View3D(args[1], args[2]);
         if (args.Length == 4 && args[0] == "--shot-attire") return Render.Attire(args[1], args[2], args[3]);
         Core.Unblock.OwnFiles();     // (the downloaded zip's "from the internet" mark off PortIT's own files)
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);

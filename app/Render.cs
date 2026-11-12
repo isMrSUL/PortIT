@@ -81,6 +81,42 @@ internal static class Render
 
     /// <summary>the "Install as attire" window for the guide: stars = the engine's 'stars' answer (a json file),
     /// star = the superstar shown</summary>
+    /// <summary>the 3D view window, driven by real (headless) mouse input: open, drag to turn, wheel to zoom - a png after
+    /// each step (out_1 .. out_4)</summary>
+    public static int View3D(string outPrefix, string modDir)
+    {
+        AppBuilder.Configure<App>().UseSkia().WithInterFont()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+        var w = new ViewerWindow(modDir, "test", false, false) { Width = 1000, Height = 760 };
+        w.Show();
+        Pump(3);
+        void Shot(int n) { Pump(0.6); var f = w.CaptureRenderedFrame(); f?.Save($"{outPrefix}_{n}.png"); }
+        Shot(1);
+        var mid = new Point(500, 400);
+        w.MouseDown(mid, Avalonia.Input.MouseButton.Left);
+        for (int i = 1; i <= 10; i++) { w.MouseMove(new Point(500 + 15 * i, 400 + 3 * i)); Pump(0.05); }
+        w.MouseUp(new Point(650, 430), Avalonia.Input.MouseButton.Left);
+        Shot(2);
+        for (int i = 0; i < 8; i++) { w.MouseWheel(new Point(500, 180), new Vector(0, 1)); Pump(0.05); }
+        Shot(3);
+        w.KeyPressQwerty(Avalonia.Input.PhysicalKey.W, Avalonia.Input.RawInputModifiers.None);
+        Shot(4);
+        w.KeyPressQwerty(Avalonia.Input.PhysicalKey.W, Avalonia.Input.RawInputModifiers.None);
+        w.KeyPressQwerty(Avalonia.Input.PhysicalKey.Home, Avalonia.Input.RawInputModifiers.None);
+        w.KeyPressQwerty(Avalonia.Input.PhysicalKey.H, Avalonia.Input.RawInputModifiers.None);
+        Pump(1.2); Shot(5);
+        Pump(0.7); Shot(6);
+        // the "you turn it" test: J, then a quick drag (the hair should trail behind the turn)
+        w.KeyPressQwerty(Avalonia.Input.PhysicalKey.J, Avalonia.Input.RawInputModifiers.None);
+        Pump(1.0); Shot(7);
+        w.MouseDown(new Point(500, 400), Avalonia.Input.MouseButton.Left);
+        for (int i = 1; i <= 12; i++) { w.MouseMove(new Point(500 + 18 * i, 400)); Pump(0.03); }
+        w.MouseUp(new Point(716, 400), Avalonia.Input.MouseButton.Left);
+        Pump(0.05); Shot(8);
+        Pump(1.5); Shot(9);
+        return 0;
+    }
+
     public static int Attire(string outPath, string starsJson, string star)
     {
         AppBuilder.Configure<App>().UseSkia().WithInterFont()

@@ -43,6 +43,11 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
 - **Full detail + HD texture pack** (game 2.1.6 or newer, with PortIT's big-model DLL) — every vertex of the source
   model, and every texture at its full size in a texture pack. Six such wrestlers have run a 6-man match at 60 fps.
   Without the DLL, or on older games, the model is simplified to fit the game's normal memory.
+- **3D view** — turn the built model with the mouse like in Blender (drag to turn, wheel to zoom close, front / side /
+  back / top keys, wireframe), with its HD textures.
+- **Moving hair (test)** — long hair and braids swing in matches like the game's own long-haired superstars: PortIT
+  adds hair bone chains and the game's hair settings. Try it first in the 3D view's **Hair** buttons (the head moves,
+  or you turn the wrestler yourself and the hair reacts).
 - **Faces that move** — a stock SvR head's face rig is fitted onto the new face, so the game's own face animations
   (talking, yelling, selling) work. Which skin is upper lip and which is lower comes from the source game's own data
   (2K's FACS jaw-open shape, AEW's lip and jaw bones), the mouth corners stay round, and AEW wrestlers keep their own
@@ -59,7 +64,8 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
   or replacing one; the same rules as the Mod Maker's Attires page). The HD textures go into your enabled texture pack,
   at the size you pick (4K by default, about 21 MB a wrestler; 8K or 2K). The big-model DLL installs from PortIT too.
 - **`.svrmod`** — every port is also saved as a `.svrmod`, so you can open it in the **Mod Maker** and edit the name,
-  stats, moves, entrance and so on. The HD textures come in a zip for the `Texture Packs` folder.
+  stats, moves, entrance and so on. The HD textures come in a zip for the `Texture Packs` folder, and a
+  **`… - SHARE THIS (model + HD textures).zip`** holds both, ready to share.
 
 ## What you need
 

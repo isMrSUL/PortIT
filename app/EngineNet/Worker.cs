@@ -19,7 +19,7 @@ namespace PortIT.Engine;
 /// </summary>
 public sealed class Worker
 {
-    public const string Version = "1.2.1";
+    public const string Version = "1.3.0";
     public const string CakPrefix = "cak:", PacPrefix = "pac:";
     readonly Action<string> log;
     readonly CancellationToken cancel;
@@ -394,6 +394,28 @@ public sealed class Worker
                 foreach (var f in Directory.EnumerateFiles(tp).Select(Path.GetFileName).Order(StringComparer.Ordinal))
                     z.CreateEntryFromFile(Path.Combine(tp, f!), $"{mid} HD/{f}", CompressionLevel.NoCompression);
             res["texture_zip"] = zpath;
+            // one file to share: people sent the .svrmod and forgot the HD textures (the user's request 2026-11-12)
+            string share = Path.Combine(outDir, mid + " - SHARE THIS (model + HD textures).zip");
+            if (File.Exists(share)) File.Delete(share);
+            using (var z = ZipFile.Open(share, ZipArchiveMode.Create))
+            {
+                z.CreateEntryFromFile(path, Path.GetFileName(path), CompressionLevel.NoCompression);
+                foreach (var f in Directory.EnumerateFiles(tp).Select(Path.GetFileName).Order(StringComparer.Ordinal))
+                    z.CreateEntryFromFile(Path.Combine(tp, f!), $"{mid} HD/{f}", CompressionLevel.NoCompression);
+                var e = z.CreateEntry("HOW TO INSTALL.txt");
+                using var w = new StreamWriter(e.Open(), new UTF8Encoding(false));
+                w.Write(string.Join(Environment.NewLine, new[]
+                {
+                    "This wrestler has 2 parts. Install BOTH:", "",
+                    $"1. The model: open {Path.GetFileName(path)} with the SvR 2011 Mod Maker (or put it in the game with PortIT).", "",
+                    $"2. The HD textures: copy the folder \"{mid} HD\" into the game's Texture Packs folder,",
+                    "   then turn the pack on in the launcher's Texture packs list.", "",
+                    "Without the HD textures the wrestler looks blurry or wrong.",
+                    "Full-detail models also need PortIT's big-model DLL in the game folder.", "",
+                    "When you share this wrestler, share this whole zip file.", "",
+                }));
+            }
+            res["share_zip"] = share;
         }
         return res;
     }
@@ -432,7 +454,7 @@ public sealed class Worker
         int hd = req["hd_size"] is JsonNode hn && hn.GetValueKind() == JsonValueKind.Number ? (int)hn.GetValue<double>() : 4096;
         string modId = StrOr(req, "mod_id") is { Length: > 0 } mi ? mi : "portit_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
         log($"porting with the Rock / Brock pipeline ({(budget >= Port2k.FullBudget ? "full detail + texture pack" : $"{budget} pages")})...");
-        var p2 = new Port2k();
+        var p2 = new Port2k { MovingHair = Truthy(req, "moving_hair") };
         var leave = (req["leave_out"] as JsonArray ?? []).Select(n => n!.GetValue<string>());
         var res = p2.Build(Str(req, "id"), att, work, game, budget, template: StrOr(req, "template") is { Length: > 0 } t ? t : null, log: log, print: log,
                            packPrefix: modId + "_hd", leaveOut: leave, bridge: bridge, packSize: hd is 2048 or 4096 or 8192 ? hd : 4096,
@@ -497,6 +519,9 @@ public sealed class Worker
         var exp = ExportSvrmod(final, outDir);
         report.Add($"saved as {Path.GetFileName(exp["svrmod"]!.GetValue<string>())} (the Mod Maker opens it to edit the name, stats, moves...)" +
                    (exp["texture_zip"] is JsonNode tz ? $"; HD textures: {Path.GetFileName(tz.GetValue<string>())} (unzip into the game's Texture Packs folder)" : ""));
+        if (exp["share_zip"] is JsonNode sz)
+            report.Add($"TO SHARE THIS WRESTLER, send \"{Path.GetFileName(sz.GetValue<string>())}\": the model and its HD textures in one file " +
+                       "(the .svrmod alone has no HD textures)");
         report.Add($"took {sw.Elapsed.TotalSeconds:F0} s");
         File.WriteAllText(Path.Combine(final, "portit_report.txt"), string.Join("\r\n", report), new UTF8Encoding(false));
         var checks = new JsonObject { ["face_over"] = res.Checks.FaceOver, ["gear_over"] = res.Checks.GearOver, ["notes"] = new JsonArray(res.Checks.Notes.Select(x => (JsonNode)x).ToArray()) };
@@ -505,7 +530,7 @@ public sealed class Worker
             ["out"] = final, ["pac"] = Path.Combine(final, "ch.pac"), ["pages"] = a0["pages"]!.DeepClone(), ["report"] = new JsonArray(report.Select(x => (JsonNode)x).ToArray()),
             ["preview"] = pv, ["checks"] = checks, ["texture_pack"] = new JsonArray(pack.Select(f => (JsonNode)Path.GetFileName(f)).ToArray()),
             ["entrance_preview"] = epv, ["entrance_pages"] = entrancePages,
-            ["svrmod"] = exp["svrmod"]!.DeepClone(), ["texture_zip"] = exp["texture_zip"]?.DeepClone(),
+            ["svrmod"] = exp["svrmod"]!.DeepClone(), ["texture_zip"] = exp["texture_zip"]?.DeepClone(), ["share_zip"] = exp["share_zip"]?.DeepClone(),
         };
     }
 

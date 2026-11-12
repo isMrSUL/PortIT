@@ -8,7 +8,7 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
-    <Version>1.2.1</Version>
+    <Version>1.3.0</Version>
     <ApplicationIcon>Assets/portit.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>

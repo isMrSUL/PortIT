@@ -27,6 +27,8 @@ public sealed class FullPort
     /// list: 2K shows the rest of the skin, also where it lies over the gear (the back of the calves over an open-backed
     /// boot's inner panel - tucking it 3 - 7 cm in left a hole, Rock 1999, 2026-11-12)</summary>
     public double SkinOverGear = double.PositiveInfinity;
+    /// <summary>no skin is moved under gear hit this close (model units, 0.1 = 1 cm) to the gear's open edge</summary>
+    public double HemCm = 1.0;   // (3 cm left the outer hip steps on Andre; 10 cm: none, no skin through Big E / Rock gear)
     static readonly string[] NotGearPrefix = ["M_Body", "M_Head", "M_EYE", "M_TransB", "M_transB", "M_MouthBag", "mouth_", "M_AEWMouth", "M_InnerMouth", "M_Teeth", "M_Tongue"];
 
     // ---------------------------------------------------------------- model.json access
@@ -596,6 +598,24 @@ public sealed class FullPort
                     }
         }
         (int, int, int) Key(double[] P, int v) => ((int)Math.Floor(P[3 * v] / cell), (int)Math.Floor(P[3 * v + 1] / cell), (int)Math.Floor(P[3 * v + 2] / cell));
+        // (distance from a point to the nearest open edge of the gear triangles in its cell list)
+        double HemDist(double x, double y, double z, List<int> cl)
+        {
+            double best = double.PositiveInfinity;
+            foreach (int t in cl)
+                for (int e = 0; e < 3; e++)
+                {
+                    if (!triOpen[t, e]) continue;
+                    double[] P0 = e == 0 ? A : e == 1 ? B : C, P1 = e == 0 ? B : e == 1 ? C : A;
+                    int i = 3 * t;
+                    double dx = P1[i] - P0[i], dy = P1[i + 1] - P0[i + 1], dz = P1[i + 2] - P0[i + 2];
+                    double ll = dx * dx + dy * dy + dz * dz;
+                    double tt = ll > 1e-20 ? Math.Clamp(((x - P0[i]) * dx + (y - P0[i + 1]) * dy + (z - P0[i + 2]) * dz) / ll, 0, 1) : 0;
+                    double ex = P0[i] + dx * tt - x, ey = P0[i + 1] + dy * tt - y, ez = P0[i + 2] + dz * tt - z;
+                    best = Math.Min(best, ex * ex + ey * ey + ez * ez);
+                }
+            return Math.Sqrt(best);
+        }
         int total = 0;
         foreach (var m in skin)
         {
@@ -634,7 +654,10 @@ public sealed class FullPort
                     on[r] = ok && u >= -1e-6 && w >= -1e-6 && u + w <= 1 + 1e-6;
                 }
                 double tmin = double.PositiveInfinity; bool near = false;
-                for (int r = 0; r < k; r++) if (on[r] && same[r] && tv[r] > -Math.Min(Shallow, SkinOverGear) && tv[r] < margin) { near = true; tmin = Math.Min(tmin, tv[r]); }
+                // (a hit within HemCm of the gear's open edge - a hem, a leg hole, a strap's side - moves no skin: just past the
+                //  hem the skin is outside the gear, and pushing it in left a step / slit there - Andre the Giant 2017, 2026-11-12)
+                bool AtHem(int r) => HemDist(P[3 * v] + d[0] * tv[r], P[3 * v + 1] + d[1] * tv[r], P[3 * v + 2] + d[2] * tv[r], cl) < HemCm;
+                for (int r = 0; r < k; r++) if (on[r] && same[r] && tv[r] > -Math.Min(Shallow, SkinOverGear) && tv[r] < margin && !AtHem(r)) { near = true; tmin = Math.Min(tmin, tv[r]); }
                 if (near)
                 {
                     for (int c = 0; c < 3; c++) P[3 * v + c] -= d[c] * (margin - tmin);
@@ -646,7 +669,7 @@ public sealed class FullPort
                 for (int r = 0; r < k; r++)
                     if (on[r] && tv[r] < 0 && tv[r] > -Math.Min(deep, SkinOverGear) && (kb < 0 || tv[r] > tb)) { tb = tv[r]; kb = r; }
                 if (kb < 0) continue;
-                if (same[kb])
+                if (same[kb] && !AtHem(kb))
                 {
                     for (int c = 0; c < 3; c++) P[3 * v + c] -= d[c] * (margin - tv[kb]);
                     moved++;
@@ -680,6 +703,7 @@ public sealed class FullPort
                     if (dd < db) { db = dd; kb = r; }
                 }
                 if (db > 0.30 || (edge[kb] >= 0 && triOpen[c2[kb], edge[kb]])) continue;
+                if (HemDist(q[3 * kb], q[3 * kb + 1], q[3 * kb + 2], cl) < HemCm) continue;   // (by a hem: as above)
                 double sd = Blas.Dot(new[] { pv[0] - q[3 * kb], pv[1] - q[3 * kb + 1], pv[2] - q[3 * kb + 2] }, new[] { GN[3 * c2[kb]], GN[3 * c2[kb] + 1], GN[3 * c2[kb] + 2] });
                 if (-margin < sd && sd < (isHead ? 0.35 : 0.15))
                 {

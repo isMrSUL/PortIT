@@ -361,7 +361,11 @@ public sealed class SvrBuilder
         var md = s.Raw;
         uint fl = Flags(BinaryPrimitives.ReadUInt32BigEndian(md.AsSpan(0x88)), mat);
         BinaryPrimitives.WriteUInt32BigEndian(md.AsSpan(0x88), fl);
-        BinaryPrimitives.WriteUInt32BigEndian(md.AsSpan(0x8C), tmpl.Vfmt);
+        // (vertex format: a cut-out yBumpMapSS mesh gets 4, as all 331 of the stock ones (hair, 0x2710) - the skin
+        //  template's 8 drew Seth Rollins' beard cards whole, as blocks; 2026-11-12)
+        uint vf = (fl & 0x110) != 0 && tmpl.Shader == "yBumpMapSS" ? 4u : tmpl.Vfmt;
+        s.Vfmt = vf;
+        BinaryPrimitives.WriteUInt32BigEndian(md.AsSpan(0x8C), vf);
         BinaryPrimitives.WriteSingleBigEndian(md.AsSpan(0xA4), (float)cen[0]);
         BinaryPrimitives.WriteSingleBigEndian(md.AsSpan(0xA8), (float)cen[1]);
         BinaryPrimitives.WriteSingleBigEndian(md.AsSpan(0xAC), (float)cen[2]);
@@ -500,6 +504,30 @@ public sealed class SvrBuilder
             m.W = Weights(m);
         }
         if (!faced) { faced = true; FacePivots(meshes); }
+        // moving hair (HairChains): bone chains in the hair model + the game's hair settings (0x3C) and capsules (0x3D)
+        List<Jboy.Node>? hairNodes = null; byte[]? hairSettings = null;
+        if (Truthy(a["hair_physics"]) && meshes.Any(m => m.Kind == "hair"))
+        {
+            var Wn = new List<double[]>();
+            for (int j = 0; j < nodes.Count; j++)
+            {
+                var fr = conv.TFrame[j];
+                int p = j > 0 ? fr.Parent : -1;
+                var M = Frame(Rot(fr.R), nodes[j].T);
+                Wn.Add(p < 0 ? M : Blas.MatMul(Wn[p], M, 4));
+            }
+            var hm = meshes.Where(m => m.Kind == "hair").ToList();
+            // (gear that may be worn on the hair - not the body, head, eyes or mouth)
+            var ex = meshes.Where(m => m.Kind == "skin" && !System.Text.RegularExpressions.Regex.IsMatch(m.Name, "^(M_)?(Body|Head|EYE|MouthBag|Teeth|Tongue)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)).ToList();
+            var hr = HairChains.Build(nodes, Wn, index, hm.Select(m => (m.Pos, m.W)).ToList(),
+                                      meshes.Where(m => m.Kind == "skin" && m.Name.StartsWith("M_Head", StringComparison.OrdinalIgnoreCase) || m.Name.StartsWith("M_Body", StringComparison.OrdinalIgnoreCase)).Select(m => m.Pos).ToList(),
+                                      Warnings.Add, ex.Select(m => (m.Pos, m.W)).ToList());
+            if (hr != null)
+            {
+                hairNodes = hr.Nodes; hairSettings = Encoding.ASCII.GetBytes(hr.Settings); Warnings.AddRange(hr.Notes);
+                foreach (int i in hr.ExtrasMoved) ex[i].Kind = "hair";     // (into the hair model: the chain bones are there)
+            }
+        }
         var at = a["textures"] as JsonObject ?? [];
         string? NormOf(NMesh m) => (string?)m.Material?["normal"] ?? (string?)m.Textures?["normal"] ?? (string?)at["normal"];
         string AlphaMode(NMesh m) => Truthy(m.Material?["cutout"]) ? "texture" : (string?)m.Material?["specular_alpha"] ?? "";
@@ -563,7 +591,7 @@ public sealed class SvrBuilder
             var sel = meshes.Where(m => kinds.Contains(m.Kind)).ToList();
             if (sel.Count == 0 && key != 0) continue;
             var tm = key switch { 0 => conv.Body, 0x2710 => conv.Hair ?? conv.Body, _ => conv.Lash };
-            var model = new Jboy { Header = tm.Header, Name = tm.Name, Group = tm.Group, Textures = texs.ToList(), Nodes = nodes };
+            var model = new Jboy { Header = tm.Header, Name = tm.Name, Group = tm.Group, Textures = texs.ToList(), Nodes = key == 0x2710 && hairNodes != null ? hairNodes : nodes };
             foreach (var m in sel)
             {
                 var vb = m.W.Select(ws => ws.Select(e => e.B).ToList()).ToList();
@@ -582,7 +610,15 @@ public sealed class SvrBuilder
         var texA = new List<(string, byte[])> { ("normal", DdsWriter.Encode(normal, "DXT5")), ("noise", conv.TTex.First(x => x.Name == "noise").Data), ("Mk", DdsWriter.Encode(mk, "DXT1")) };
         texA.AddRange(conv.TTex.Where(x => x.Name.ToLowerInvariant().StartsWith("bloodhair") || x.Name.ToLowerInvariant().StartsWith("bloodhand") || x.Name.ToLowerInvariant().StartsWith("blood")));
         kids[0xa] = TexBundleWrite(texA, t[0xa][..16]);
-        kids[0xc] = TexBundleWrite([("color", DdsWriter.Encode(color, "DXT5"))], t[0xc][..16]);
+        // (the hair cards' cells, from the sheet PortIT drew, at this sheet's size: their alpha cut hard in every level)
+        List<(int X, int Y, int W, int H)>? cutCells = null;
+        if (a["cut_cells"] is JsonArray ccs && a["cut_sheet"] is JsonArray csz)
+        {
+            double kx = (double)color.W / csz[0]!.GetValue<int>(), ky = (double)color.H / csz[1]!.GetValue<int>();
+            cutCells = ccs.Select(c => c!.AsArray()).Select(c => ((int)Math.Floor(c[0]!.GetValue<int>() * kx), (int)Math.Floor(c[1]!.GetValue<int>() * ky),
+                                                               (int)Math.Ceiling(c[2]!.GetValue<int>() * kx), (int)Math.Ceiling(c[3]!.GetValue<int>() * ky))).ToList();
+        }
+        kids[0xc] = TexBundleWrite([("color", cutCells != null ? DdsWriter.Levels(color, "DXT5", cutCells) : DdsWriter.Encode(color, "DXT5"))], t[0xc][..16]);
         foreach (int k in new[] { 0xd, 0xe, 0xf })
             if (t.TryGetValue(k, out var tk))
             {
@@ -593,6 +629,12 @@ public sealed class SvrBuilder
             }
         foreach (int k in new[] { 0xb, 0x28, 0x32, 0x50, 0x64, 0x7530, 0x7531, 0x7532 }) if (t.TryGetValue(k, out var tk)) kids[k] = tk;
         foreach (int k in new[] { 0xc8, 0xc9 }) if (t.TryGetValue(k, out var tk)) kids[k] = tk;
+        if (hairSettings != null && kids.ContainsKey(0x2710))
+        {
+            kids[0x3c] = hairSettings;
+            if (HairChains.StockCapsules(templatePath) is { } caps) kids[0x3d] = caps;
+            else Warnings.Add("moving hair: no stock body capsules found (0x3D) - the hair may pass through the shoulders");
+        }
         // budget
         var dropped = new List<string>();
         var (pages, parts) = Budget.AttirePages(kids);
@@ -615,7 +657,10 @@ public sealed class SvrBuilder
     static List<List<int>> SplitByPalette(int[][] tris, List<List<int>> vbones)
     {
         int Min(int v) => vbones[v].Count > 0 ? vbones[v].Min() : 0;
-        var order = Enumerable.Range(0, tris.Length).OrderBy(i => (Min(tris[i][0]), i)).ToList();
+        int Max(int v) => vbones[v].Count > 0 ? vbones[v].Max() : 0;
+        // (by the triangle's highest bone first: moving hair's chain bones are numbered chain by chain, so a chain's
+        //  triangles stay together - by the lowest, atama on most of them mixed every chain: 50 meshes for Seth Rollins)
+        var order = Enumerable.Range(0, tris.Length).OrderBy(i => (Math.Max(Max(tris[i][0]), Math.Max(Max(tris[i][1]), Max(tris[i][2]))), Min(tris[i][0]), i)).ToList();
         var groups = new List<List<int>>();
         var cur = new List<int>();
         var bones = new HashSet<int>();

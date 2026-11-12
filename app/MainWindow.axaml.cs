@@ -106,6 +106,14 @@ public partial class MainWindow : Window
         AttireBox.SelectionChanged += async (_, _) => { if (!filling && chosen != null && AttireBox.SelectedItem is string) await Inspect(); };
         PortButton.Click += async (_, _) => await Port();
         OpenButton.Click += (_, _) => { if (lastMod != null) System.Diagnostics.Process.Start("explorer.exe", lastMod); };
+        void Open3D()
+        {
+            if (lastMod == null || !File.Exists(Path.Combine(lastMod, "ch.pac"))) return;
+            new ViewerWindow(lastMod, chosen?.Name ?? Path.GetFileName(lastMod), entrance.BuiltPic != null, onEntrance).Show(this);
+        }
+        View3DButton.Click += (_, _) => Open3D();
+        // (people click the picture to turn it: a click on the built model's picture opens the 3D view too)
+        PreviewImage.PointerPressed += (_, _) => { if (View3DButton.IsEnabled && PreviewTitle.Text?.Contains("pages") == true) Open3D(); };
         InstallButton.Click += async (_, _) => await Install();
         AttireButton.Click += async (_, _) => await InstallAttire();
         SourcePreviewButton.Click += async (_, _) => await SourcePreview();
@@ -300,22 +308,48 @@ public partial class MainWindow : Window
             return;
         }
         SaveSetting("game", game);
-        if (FullDetail && !File.Exists(Path.Combine(game, "xinput1_4.dll")))
+        // the big-model DLL: is PortIT's in the game folder, and did the game use it (bigmodel.log)? Without it a "Full
+        // detail" port is cut down to the normal 768 KB - Marina Shafir's hair went from 1090 cards to ~250 (GitHub issue 1,
+        // 2026-11-12): the old check only looked for a file named xinput1_4.dll
+        string dllState = "none"; bool dllActive = false;
+        try
+        {
+            var st = await Core.Engine.Run(python, new() { ["command"] = "bigmodel", ["game"] = game, ["action"] = "status" }, null, CancellationToken.None);
+            dllState = st.GetProperty("installed").GetString() ?? "none";
+            dllActive = st.TryGetProperty("active", out var ac) && ac.GetBoolean();
+        }
+        catch (Exception) { dllState = File.Exists(Path.Combine(game, "xinput1_4.dll")) ? "portit" : "none"; dllActive = true; }   // (no answer: the old file check)
+        const string smaller = "Port it smaller";
+        if (FullDetail && dllState != "portit")
         {
             // (people's request 2026-11-10: tell them the DLL is needed for the better model and textures, and put it in)
             string? pick = await Choose3("\"Full detail + HD texture pack\" needs PortIT's big-model DLL in the game folder " +
-                                         "(xinput1_4.dll): it gives each wrestler 4096 KB of model memory instead of 768 KB. " +
-                                         "Without it this port is cut down to the game's normal size.\n\nInstall it now? " +
-                                         "(Close the game first. Start the game once after installing, then port again for the full model.)",
-                                         "Install", null);
+                                         "(xinput1_4.dll): it gives each wrestler 4096 KB of model memory instead of 768 KB.\n\n" +
+                                         (dllState == "other" ? "The xinput1_4.dll in your game folder is from another mod, not PortIT's. Installing keeps it as xinput1_4.dll.before_portit.\n\n" : "It is not installed.\n\n") +
+                                         "Without it this port is cut down to the game's normal size: thinner hair, rougher clothes and body.\n\n" +
+                                         "Install it now? (Close the game first. Start the game once after installing, then port again for the full model.)",
+                                         "Install", smaller);
             if (pick == "Install")
+            {
                 await Work("Installing the big-model DLL…", async ct =>
                 {
                     await Core.Engine.Run(python, new() { ["command"] = "bigmodel", ["game"] = game, ["action"] = "install" }, null, ct);
                     Status("Big-model DLL installed. Start the game once, then port again for the full-detail model.");
                 });
-            return;
+                return;
+            }
+            if (pick != smaller) return;
         }
+        else if (FullDetail && !dllActive)
+        {
+            string? pick = await Choose3("PortIT's big-model DLL is installed, but the game has not used it yet: there is no bigmodel.log " +
+                                         "in the game folder, or it shows the normal 768 KB.\n\n" +
+                                         "Start the game once (to the main menu), close it, then port again for the full model.\n\n" +
+                                         "If you port now, the model is cut down to the game's normal size: thinner hair, rougher clothes and body.",
+                                         smaller, null);
+            if (pick != smaller) return;
+        }
+        bool remind = !FullDetail && dllState != "portit";
         string outDir = OutBox.Text?.Trim().Trim('"') ?? "";
         SaveSetting("out", outDir);
         var req = Request("port");
@@ -325,6 +359,7 @@ public partial class MainWindow : Window
         req["budget"] = (BudgetBox.SelectedItem as Budget)?.Pages ?? 190;
         req["hd_size"] = (HdBox.SelectedItem as HdSize)?.Width ?? 4096;
         req["face"] = FaceCheck.IsChecked == true;
+        req["moving_hair"] = HairCheck.IsChecked == true;
         req["mod_id"] = (ModIdBox.Text ?? "").Trim();
         req["mod_name"] = (ModNameBox.Text ?? "").Trim();
         // (each outfit's unticked pieces left out, its ticked alternate looks used; the entrance outfit a second model)
@@ -337,8 +372,24 @@ public partial class MainWindow : Window
             ReportText.Text = string.Join("\n", r.GetProperty("report").EnumerateArray().Select(x => "•  " + x.GetString()));
             Ported(r);
             lastPages = r.GetProperty("pages").GetInt32();
-            OpenButton.IsEnabled = InstallButton.IsEnabled = AttireButton.IsEnabled = true;
+            OpenButton.IsEnabled = InstallButton.IsEnabled = AttireButton.IsEnabled = View3DButton.IsEnabled = true;
             Status($"Done: {lastMod}");
+            if (r.TryGetProperty("share_zip", out var sz) && sz.ValueKind == JsonValueKind.String)
+            {
+                // (people shared the .svrmod and forgot the HD textures: one zip with both - the user's request 2026-11-12)
+                string share = Path.GetFileName(sz.GetString()!);
+                ReportText.Text += $"\n\nTO SHARE THIS WRESTLER: send \"{share}\" (next to the mod). It has the model AND its HD textures - " +
+                                   "the .svrmod alone has no HD textures.";
+                Status($"Done  ·  to share it, send \"{share}\" (model + HD textures)");
+            }
+            if (remind)
+            {
+                // (the user's request 2026-11-12: remind people the full model quality needs the DLL)
+                const string tip = "Tip: for the full model quality (all the hair, smooth clothes, HD textures), pick \"Full detail + " +
+                                   "HD texture pack\" and install PortIT's big-model DLL (the Big-model DLL button), then start the game once.";
+                ReportText.Text += "\n\n" + tip;
+                Status($"Done: {lastMod}  ·  {tip}");
+            }
         });
     }
 

@@ -117,6 +117,9 @@ public sealed class RockFbx
         var bas = material.Split(':')[0];
         var cands = new List<string> { bas, bas.EndsWith("_l") || bas.EndsWith("_r") ? bas[..bas.LastIndexOf('_')] : bas };
         if (extra != null && extra.ToLowerInvariant().EndsWith("_color")) cands.Add(extra[..^"_color".Length]);
+        // (hair_ALPHA's map is hair_color.DDS: without this the hair took one flat colour from its vertex colours -
+        //  Adam Cole '20 (2K25) came out light beige, his hair is dark brown; 2026-11-12)
+        if (Regex.IsMatch(bas, "(?i)_alpha$")) cands.Add(Regex.Replace(bas, "(?i)_alpha$", ""));
         foreach (var folder in folders)
             foreach (var c in cands)
             {
@@ -226,6 +229,9 @@ public sealed class RockFbx
     public Dictionary<string, int[]>? Hidden;
     /// <summary>true when the last Build hid M_Body by the attire's own list (then the rest of the skin is meant to show)</summary>
     public bool UsedHpl;
+    /// <summary>the triangles (3 points each, flat) of the gear pieces the user left out, and their names</summary>
+    public List<double> LeftOutTris = [];
+    public List<string> LeftOutNames = [];
 
     /// <summary>the body skin under the gear removed (rock_fbx.hide_body). When the attire has a 2K hidden-polygon list for
     /// M_Body, exactly the triangles 2K hides (all three corners in the list) go: the guess below hid the back of the calves
@@ -239,6 +245,18 @@ public sealed class RockFbx
         {
             var h = new bool[body.N];
             foreach (int i in list) h[i] = true;
+            if (LeftOutTris.Count > 0)
+            {
+                // (the list is for the whole attire: skin under a piece the user left out - and under no kept piece - shows)
+                var kept = meshes.Where(m => !NotGear.Contains(m.Name) && !DropMeshes.Contains(m.Name))
+                                 .SelectMany(m => m.Tris.SelectMany(v => new[] { m.Verts[3 * v], m.Verts[3 * v + 1], m.Verts[3 * v + 2] })).ToArray();
+                var underOut = Covered(body.Verts, body.Normals, LeftOutTris.ToArray(), HideOutCm, HideInCm);
+                var underKept = kept.Length > 0 ? Covered(body.Verts, body.Normals, kept, HideOutCm, HideInCm) : new bool[body.N];
+                int shown = 0;
+                for (int i = 0; i < body.N; i++)
+                    if (h[i] && underOut[i] && !underKept[i]) { h[i] = false; shown++; }
+                Report.Add($"M_Body: {shown} vertices of the hidden list shown again (under the left-out {string.Join(", ", LeftOutNames)})");
+            }
             int nt0 = body.Tris.Length / 3;
             var keepL = Enumerable.Range(0, nt0).Where(t => !(h[body.Tris[3 * t]] && h[body.Tris[3 * t + 1]] && h[body.Tris[3 * t + 2]])).ToList();
             Cut(body, keepL, "the attire's hidden-polygon list");
@@ -367,6 +385,7 @@ public sealed class RockFbx
         var meshes = new List<Mesh>();
         var colors = Mtls.ColorMaps(chr);
         TexAlias.Clear();
+        LeftOutTris.Clear(); LeftOutNames.Clear();
         aliasTex = null;
         foreach (var (model, folder) in new[] { (bas, Path.Combine(chr, "BaseModel")), (att, adir) })
         {
@@ -377,7 +396,20 @@ public sealed class RockFbx
             {
                 var mb = model.Meshes[k];
                 string name = mb.Material;
-                if (DropMeshes.Contains(name) || model.Lods.Count == 0) continue;
+                if (model.Lods.Count == 0) continue;
+                if (DropMeshes.Contains(name))
+                {
+                    // (gear the user left out: its triangles kept aside, so the attire's hidden list can show the skin
+                    //  under it again - the feet when the boots are unticked, 2026-11-12)
+                    if (!QuickRead && !NotGear.Contains(name) && name is not ("M_Teeth" or "M_Tongue" or "M_MouthBag")
+                        && model.StreamOf(k, "POSITION") is { } lp)
+                    {
+                        var lv = Rows.TimesMatT(Three(lp), Turn);
+                        foreach (int v in model.Lods[0][k].Triangles) { LeftOutTris.Add(lv[3 * v]); LeftOutTris.Add(lv[3 * v + 1]); LeftOutTris.Add(lv[3 * v + 2]); }
+                        LeftOutNames.Add(name);
+                    }
+                    continue;
+                }
                 if (SkipVariants && !UseVariants.Contains(name) && mats.Any(o => !name.Equals(o, StringComparison.OrdinalIgnoreCase) && name.ToLowerInvariant().StartsWith(o.ToLowerInvariant() + "_")))
                 { Report.Add($"{name,-18} left out (an alternate look)"); continue; }
                 if (name.Length >= 2 && name[..2].ToLowerInvariant() == "s_" && matsLow.Contains("m_" + name[2..].ToLowerInvariant()))
