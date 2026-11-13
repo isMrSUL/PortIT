@@ -416,7 +416,7 @@ public sealed class RockModel
         if (!colorMaps.TryGetValue(chr, out var cm)) colorMaps[chr] = cm = PortIT.Engine.Readers.Mtls.ColorMaps(chr);
         if (cm.TryGetValue(bas.ToLowerInvariant(), out var cmap) && cmap.EndsWith("_color", StringComparison.OrdinalIgnoreCase)
             && Search(cmap[..^"_color".Length] + suffix) is { } viaMtls) return viaMtls;
-        if (bas.ToLowerInvariant() is "head" or "body" && Search(bas + "x" + suffix) is { } xHit) return xHit;
+        if (Search(bas + "x" + suffix) is { } xHit) return xHit;
         var a = Fbx.TexAlias.GetValueOrDefault(bas.ToLowerInvariant())?.GetValueOrDefault(suffix);
         if (a != null && File.Exists(a)) return a;
         // (hair_ALPHA -> hair_color.DDS, as RockFbx.TextureFor)

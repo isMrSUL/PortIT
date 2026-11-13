@@ -573,7 +573,7 @@ public static class YukesPack
         try
         {
             var root = System.IO.Path.Combine(CacheRoot, Key(pac));
-            if (!File.Exists(System.IO.Path.Combine(root, ".done"))) return null;
+            if (!File.Exists(System.IO.Path.Combine(root, ".done2"))) return null;
             return Directory.EnumerateDirectories(root).FirstOrDefault();
         }
         catch (IOException) { return null; }
@@ -586,7 +586,7 @@ public static class YukesPack
         string key = Key(pac);
         name = Regex.Replace(name ?? System.IO.Path.GetFileNameWithoutExtension(pac), @"[^A-Za-z0-9_ .()-]+", "_").Trim();
         if (name.Length == 0) name = "wrestler";
-        string root = System.IO.Path.Combine(cacheRoot ?? CacheRoot, key), chr = System.IO.Path.Combine(root, name), done = System.IO.Path.Combine(root, ".done");
+        string root = System.IO.Path.Combine(cacheRoot ?? CacheRoot, key), chr = System.IO.Path.Combine(root, name), done = System.IO.Path.Combine(root, ".done2");
         if (File.Exists(done) && Directory.Exists(chr)) return chr;
         log($"unpacking {System.IO.Path.GetFileName(pac)} (WWE 2K19 - 2K22 pack)...");
         var blobs = Members(pac);
@@ -624,6 +624,15 @@ public static class YukesPack
                     }
             }
         }
+        // (the face paint layer: no mesh names it - 2K draws it over the head - so it was never saved and the face came out
+        //  bare; Finn Balor's Demon, 2K19, user report 2026-11-13. Port2k.FacePaint lays facepaint_color on head_color)
+        foreach (var (src, dstName) in new[] { ("facepaint", "facepaint_color.dds"), ("facepaint_n", "facepaint_nrm.dds") })
+            if (tex.TryGetValue(src, out var fp))
+                foreach (var folder in new[] { "BaseModel", "Attire" })
+                {
+                    string o = System.IO.Path.Combine(chr, folder, "Textures", dstName);
+                    if (!File.Exists(o)) File.WriteAllBytes(o, fp);
+                }
         File.WriteAllText(done, pac);
         return chr;
     }

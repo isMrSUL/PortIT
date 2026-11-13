@@ -26,6 +26,10 @@
           <Button x:Name="GameBrowse" Content="Browse…" />
           <Button x:Name="BigModelButton" Content="Big-model DLL…"
                   ToolTip.Tip="Install / check PortIT's big-model DLL (xinput1_4.dll) in the game folder: needed for full-detail models and their HD textures" />
+          <Button x:Name="ReportButton" Content="Report a problem…"
+                  ToolTip.Tip="Send a bug report privately to SUL, the maker of PortIT, with a link to the model you ported" />
+          <Button x:Name="DiscordButton" Content="Discord"
+                  ToolTip.Tip="Open the SUL Modding Discord: help, new versions, and the mods people make" />
         </StackPanel>
       </Grid>
     </Border>

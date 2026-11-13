@@ -5,6 +5,9 @@ PortIT takes a wrestler from **WWE 2K19 – 2K26** or **AEW Fight Forever** and 
 
 This guide goes step by step. If something goes wrong, see [When something goes wrong](#9-when-something-goes-wrong).
 
+Stuck, or want a ping when a new version comes out? Come to the Discord: **[discord.gg/EfprRmbEt2](https://discord.gg/EfprRmbEt2)**
+(also the **Discord** button at the top of PortIT).
+
 **Contents**
 
 1. [What you need](#1-what-you-need)
@@ -338,16 +341,29 @@ textures.
 | **Another mod stopped working after installing the big-model DLL** | that mod used its own `xinput1_4.dll`. Only one can be used: put the other one back to use that mod. |
 | **A new attire does not show up** | the superstar wears entrance gear (replace an attire instead), or another attire mod took the same attire (see the launcher's Mods tab). |
 
-To report a problem, open an issue on the [GitHub page](../../../issues) with: the wrestler's name and source (2K26 or
-AEW), the attire, the model memory choice, the report text and the `worker.log`.
-
 ### Reporting a bug
 
-Open a [new issue](https://github.com/isMrSUL/PortIT/issues/new/choose) and pick **Bug in a port** or **Error or crash**. The form asks for what I need to see the same problem: the game the model came from, the wrestler and attire, Classic or Full detail, where you see it (PortIT preview, Mod Maker, the game) and screenshots. Please never share paid models (Patreon or similar) without the creator's permission.
+**The quickest way: the "Report a problem…" button** at the top right of PortIT (since 1.3.2).
+
+It asks for two things:
+
+- **a link to the model** you ported - upload it to Google Drive, MediaFire, Mega or Discord and paste the link;
+- **what went wrong**, in your own words.
+
+You can add your Discord name so I can answer you, and leave the tick box on to attach PortIT's log of the last job.
+Your Windows user name is taken out of the log before it is sent (`C:\Users\yourname\…` becomes `%USERPROFILE%\…`).
+PortIT also sends its own version, the wrestler and the game it came from. The report goes straight to me in a
+private channel - nobody else sees it, and nothing else is read from your PC.
+
+Other ways: ask in **#help** on the [Discord](https://discord.gg/EfprRmbEt2), or open a
+[new issue](https://github.com/isMrSUL/PortIT/issues/new/choose) and pick **Bug in a port** or **Error or crash**.
+Say which game the model came from, the wrestler and attire, Classic or Full detail, where you see it (PortIT
+preview, Mod Maker, the game), and add screenshots. Please never share paid models (Patreon or similar) without the
+creator's permission.
 
 **To get a problem fixed, I need the model.** Most bugs only happen with one model's files, and without them I can't
-see the problem or test the fix. Send the link to the model files to me **in a private message on Discord (DMs)** -
-please don't post model links in public channels or GitHub issues.
+see the problem or test the fix. Use the Report button, or send the link to the model files to me **in a private
+message on Discord (DMs)** - please don't post model links in public channels or GitHub issues.
 
 ## 10. Where PortIT keeps its files
 

@@ -1681,7 +1681,7 @@ switch (args[0])
             }
         foreach (var (vn, vy, vp, vz, vs, vw, vpx, vpy) in views)
         {
-            var cam = new PortIT.Engine.Port.Viewer3D.Camera { Yaw = vy, Pitch = vp, Zoom = vz, Wire = vw, PanX = vpx, PanY = vpy };
+            var cam = new PortIT.Engine.Port.Viewer3D.Camera { Yaw = vy, Pitch = vp, Zoom = vz, Wire = vw, PanX = vpx, PanY = vpy, Lit = !vn.EndsWith("_unlit") };
             var bgra = PortIT.Engine.Port.Viewer3D.Draw(sc, 1200, 900, cam, vs);
             var rgb = new Img(1200, 900, 3);
             for (int i = 0; i < 1200 * 900; i++) { rgb.Px[3 * i] = bgra[4 * i + 2]; rgb.Px[3 * i + 1] = bgra[4 * i + 1]; rgb.Px[3 * i + 2] = bgra[4 * i]; }
@@ -1843,6 +1843,25 @@ switch (args[0])
         ok++;
         break;
     }
+    case "vcolor":
+    {
+        // (args: .mdl/.mcd) - each mesh's vertex colour streams: median and min / max per channel
+        var m = PortIT.Engine.Readers.Mcd.Load(args[1]);
+        for (int k = 0; k < m.Meshes.Count; k++)
+        {
+            var c = m.StreamOf(k, "COLOR");
+            if (c == null || c.N == 0) { Console.WriteLine($"{m.Meshes[k].Material,-22} no COLOR"); continue; }
+            var parts = new List<string>();
+            for (int ch = 0; ch < c.C; ch++)
+            {
+                var col = Enumerable.Range(0, c.N).Select(i => c.V[c.C * i + ch]).Order().ToArray();
+                parts.Add($"{col[col.Length / 2]:F0} ({col[0]:F0}-{col[^1]:F0}; p75 {col[col.Length * 3 / 4]:F0} p90 {col[col.Length * 9 / 10]:F0})");
+            }
+            Console.WriteLine($"{m.Meshes[k].Material,-22} {c.N} x {c.C}: {string.Join("  ", parts)}");
+        }
+        ok++;
+        break;
+    }
     case "bonechunk":
     {
         // (args: .mdl) - the BONE chunk's header words and the first bytes, then each parsed bone (name, parent, T)
@@ -1853,6 +1872,20 @@ switch (args[0])
         Console.WriteLine($"{m.Game} BONE at {p}: size {W(p + 4)}  words {W(p + 8)} {W(p + 12)} {W(p + 16)} {W(p + 20)}  bones parsed {m.Bones.Count}");
         foreach (var (b, i) in m.Bones.Select((b, i) => (b, i)).Where(x => x.i < 12 || x.b.Name.StartsWith("J_Foot") || x.b.Name.StartsWith("J_Knee") || x.b.Name.StartsWith("J_Head")))
             Console.WriteLine($"  {i,3} {b.Name,-22} parent {b.Parent,4}  T {b.T[0],7:F2} {b.T[1],7:F2} {b.T[2],7:F2}");
+        ok++;
+        break;
+    }
+    case "pacunpack":
+    {
+        // (args: chNNNNN.pac out_cache_root) - a 2K19-2K22 pack unpacked (as the port does), its files listed
+        foreach (var b in PortIT.Engine.Readers.YukesPack.Members(args[1]))
+        {
+            var t = PortIT.Engine.Readers.YukesPack.TexturesOf(b);
+            Console.WriteLine(t != null ? $"texture bundle: {string.Join(", ", t.Keys)}" : $"member {b.Length} bytes {System.Text.Encoding.ASCII.GetString(b, 0, Math.Min(4, b.Length)).Replace('\0', '.')}");
+        }
+        var chr = PortIT.Engine.Readers.YukesPack.Extract(args[1], null, Console.WriteLine, args[2]);
+        foreach (var f in Directory.EnumerateFiles(chr, "*", SearchOption.AllDirectories).Order())
+            Console.WriteLine($"  {Path.GetRelativePath(chr, f),-60} {new FileInfo(f).Length,10}");
         ok++;
         break;
     }

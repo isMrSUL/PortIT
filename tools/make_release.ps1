@@ -43,8 +43,10 @@ by SUL (MrSUL) - https://github.com/isMrSUL/PortIT
 
 Keep all the files together: PortIT.exe needs the Engine folder next to it.
 
-Found a bug? To get it fixed I need the model: send the link to the model files to SUL in a private message on
-Discord (DMs) - not in public channels or GitHub issues.
+Found a bug? Click "Report a problem..." at the top right of PortIT. To get it fixed I need the model, so the form
+asks for a link to it. The report goes straight to SUL in private - not to a public channel.
+
+Discord (help, new versions, show your mods): https://discord.gg/EfprRmbEt2
 PortIT is free and open source (MIT License, see LICENSE). If you share a changed version, keep the LICENSE file
 and please credit SUL (MrSUL).
 "@ | Set-Content (Join-Path $dist 'Read Me First.txt') -Encoding UTF8

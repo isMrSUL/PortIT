@@ -28,11 +28,17 @@ public static class Engine
         }
     }
 
+    /// <summary>the worker.log of the newest job that did real work (not a status check) - the Report window attaches it</summary>
+    public static string? LastLog { get; private set; }
+
+    static readonly HashSet<string> QuietCommands = new(StringComparer.OrdinalIgnoreCase) { "bigmodel", "stars" };
+
     public static async Task<JsonElement> Run(string python, Dictionary<string, object?> request, Action<string>? progress, CancellationToken cancel)
     {
         if (Environment.GetEnvironmentVariable("PORTIT_PYTHON_ENGINE") == "1") return await RunPython(python, request, progress, cancel);
         string job = Path.Combine(WorkRoot, "jobs", DateTime.Now.ToString("yyyyMMdd_HHmmss_") + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(job);
+        if (!(request.TryGetValue("command", out var cmd) && QuietCommands.Contains(cmd?.ToString() ?? ""))) LastLog = Path.Combine(job, "worker.log");
         string json = JsonSerializer.Serialize(request);
         await File.WriteAllTextAsync(Path.Combine(job, "request.json"), json, CancellationToken.None);
         var log = new StringBuilder();

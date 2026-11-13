@@ -53,8 +53,13 @@ public sealed class Port2k
     {
         string mat = m.Material.ToLowerInvariant();
         if (CardMats.Any(c => mat.StartsWith(c))) return true;
+        if (RaiMats.Contains(mat.Split(':')[0])) return true;
         return mat.EndsWith("_alpha") && !SolidAlpha.Contains(mat);
     }
+
+    /// <summary>materials with a hair strand map of their own (&lt;mat&gt;_rai): hair cards whatever their name - Bray Wyatt's
+    /// dreads in JOEMASHUPS' pack are "h_acce" with a black placeholder colour map; as gear they came out black, 2026-11-13</summary>
+    public HashSet<string> RaiMats = new(StringComparer.OrdinalIgnoreCase);
 
     public void SolidAlphaGear(List<RockFbx.Mesh> meshes, string probe, Action<string> log)
     {
@@ -103,13 +108,20 @@ public sealed class Port2k
             if (c != null && c.N > 0)
             {
                 var v = new int[3];
+                var hi = new int[3];
                 for (int ch = 0; ch < 3; ch++)
                 {
                     var col = Enumerable.Range(0, c.N).Select(i => c.V[c.C * i + ch]).Order().ToArray();
                     int n = col.Length;
                     double med = n % 2 == 1 ? col[n / 2] : (col[n / 2 - 1] + col[n / 2]) / 2;
                     v[ch] = (int)med;
+                    hi[ch] = (int)col[n * 3 / 4];
                 }
+                // (blond dreads with dark roots / insides: most points near black, the strands that show light - Bray Wyatt's
+                //  Promo dreads, JOEMASHUPS: median (11, 9, 4), 75th percentile (98, 70, 31) - they came out black, 2026-11-13.
+                //  Dark hair keeps its median: a beard's 75th percentile stays dark)
+                int lum(int[] x) => (2 * x[0] + 5 * x[1] + x[2]) / 8;
+                if (lum(v) < 24 && lum(hi) > 3 * Math.Max(lum(v), 8)) v = hi;
                 lin = (v[0], v[1], v[2]);
                 break;
             }
@@ -293,6 +305,14 @@ public sealed class Port2k
                 }
             }
         }
+        RaiMats.Clear();
+        foreach (var m in meshes)
+        {
+            string b = m.Material.Split(':')[0];
+            if (m.Name.StartsWith("M_Head", StringComparison.OrdinalIgnoreCase) || m.Name is "M_Body" or "M_EYE") continue;
+            if (!CardMats.Any(c => b.ToLowerInvariant().StartsWith(c)) && R.FindTex(chr, AttireDir(chr, attire), b, "_rai") != null && RaiMats.Add(b))
+                print($"{m.Name}: material {b} has a hair strand map ({b}_rai) - ported as hair");
+        }
         R.Kind = [];
         foreach (var m in meshes)
         {
@@ -364,13 +384,20 @@ public sealed class Port2k
                 R.Shine[t] = R.Cutout.Contains(t) ? (20, 0) : t.Contains("shoe") || t.Contains("boot") ? (80, 1 / 3.0) : (40, 1 / 3.0);
         R.Solid = new(R.Solid) { ["eye_caruncle"] = (176, 104, 98) };
         var cardsRgb = new Dictionary<string, (int, int, int)>();
+        // (the strand colours are written to the work folder and looked up first: they were written next to the rai map -
+        //  into the user's own mod folder - and a mod's own placeholder <t>_color.dds was found before them: Bray Wyatt's
+        //  dreads (JOEMASHUPS, a black h_acce_color.dds) stayed black, 2026-11-13)
+        string strands = Path.Combine(work, "_strands");
+        if (Directory.Exists(strands)) foreach (var old in Directory.EnumerateFiles(strands)) File.Delete(old);
+        Directory.CreateDirectory(strands);
+        if (!R.TexFirst.Contains(strands)) R.TexFirst.Insert(0, strands);
         foreach (var t in R.Cutout.OrderBy(t => torder.IndexOf(t)))
         {
             var ms = tnames[t];
             string ad = AttireDir(chr, attire);
             var rai = R.FindTex(chr, ad, Regex.Replace(t, "(?i)_alpha$", ""), "_rai") ?? R.FindTex(chr, ad, t, "_rai");
             var rgb = HairRgbOf(chr, attire, ms[0].Name);
-            if (rai != null) StrandColour(rai, Path.Combine(Path.GetDirectoryName(rai)!, t + "_color.png"), rgb);
+            if (rai != null) StrandColour(rai, Path.Combine(strands, t + "_color.png"), rgb);
             else if (string.IsNullOrEmpty(ms[0].Texture)) R.Solid = new(R.Solid) { [t] = rgb };
             cardsRgb[t] = rgb;
         }

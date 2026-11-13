@@ -63,6 +63,7 @@ internal static class Render
     {
         AppBuilder.Configure<App>().UseSkia().WithInterFont()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+        MainWindow.SkipAnnounce = true;
         var win = new MainWindow { Width = w, Height = h };
         win.Show();
         Pump(seconds);
@@ -114,6 +115,46 @@ internal static class Render
         w.MouseUp(new Point(716, 400), Avalonia.Input.MouseButton.Left);
         Pump(0.05); Shot(8);
         Pump(1.5); Shot(9);
+        return 0;
+    }
+
+    public static int Discord(string outPath)
+    {
+        AppBuilder.Configure<App>().UseSkia().WithInterFont()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+        var dlg = Community.Dialog();
+        dlg.Height = 420;
+        dlg.Show();
+        Pump(1.5);
+        var frame = dlg.CaptureRenderedFrame();
+        if (frame == null) return 1;
+        frame.Save(outPath);
+        return 0;
+    }
+
+    /// <summary>(--shot-report png [send [jobLog]]) the Report window; "send" also presses Send - a REAL report to
+    /// #portit-reports - and prints what the window says</summary>
+    public static int Report(string outPath, bool sendIt = false, string? jobLog = null)
+    {
+        AppBuilder.Configure<App>().UseSkia().WithInterFont()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+        string log = jobLog != null ? ReportDialog.CollectLog(jobLog, "TEST - the report on screen") : "test log";
+        var dlg = new ReportDialog("Bray Wyatt", "WWE 2K", log) { Height = 560 };
+        dlg.Show();
+        dlg.ShotFill("https://www.mediafire.com/file/example/bray.zip",
+                     sendIt ? "TEST 2 - sent by PortIT's own Report window (Claude's test). You can delete this." : "The dreads are black but should be yellowish.", "tester");
+        Pump(1.5);
+        if (sendIt)
+        {
+            var t = dlg.ShotSend();
+            for (int i = 0; i < 300 && !t.IsCompleted; i++) Pump(0.1);
+            Console.WriteLine("window says: " + (t.IsCompleted ? t.Result : "(still sending)"));
+            Console.WriteLine("log has user name: " + log.Contains(Environment.UserName, StringComparison.OrdinalIgnoreCase) + ", length " + log.Length);
+            Pump(0.5);
+        }
+        var frame = dlg.CaptureRenderedFrame();
+        if (frame == null) return 1;
+        frame.Save(outPath);
         return 0;
     }
 

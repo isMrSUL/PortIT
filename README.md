@@ -12,6 +12,7 @@
 <p align="center">
   <a href="../../releases/latest"><b>Download</b></a> ·
   <a href="docs/USER_GUIDE.md"><b>User guide</b></a> ·
+  <a href="https://discord.gg/EfprRmbEt2"><b>Discord</b></a> ·
   <a href="bigmodel_dll">Big-model DLL source</a>
 </p>
 
@@ -80,12 +81,22 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
 
 ## Found a bug?
 
-Open a [new issue](https://github.com/isMrSUL/PortIT/issues/new/choose): the form asks for the game, the wrestler, your settings and screenshots.
+**The quickest way is the "Report a problem…" button in PortIT** (top right, since 1.3.2). It asks for a link to the
+model and what went wrong, attaches PortIT's log if you let it, and sends it straight to me in private - nobody else
+sees it. Your Windows user name is removed from the log before it is sent.
+
+You can also open a [new issue](https://github.com/isMrSUL/PortIT/issues/new/choose), or ask in **#help** on the
+[Discord](https://discord.gg/EfprRmbEt2).
 
 **To get a problem fixed, I need the model.** Most bugs only happen with one model's files - without them I can't
-see the problem or test the fix. Send the link to the model files to me (SUL) in a **private message on Discord
-(DMs)**. Please don't post model links in public channels or GitHub issues, and never share paid models without the
-creator's permission.
+see the problem or test the fix. Use the Report button, or send the link to the model files to me (SUL) in a
+**private message on Discord (DMs)**. Please don't post model links in public channels or GitHub issues, and never
+share paid models without the creator's permission.
+
+## Discord
+
+**[discord.gg/EfprRmbEt2](https://discord.gg/EfprRmbEt2)** - SUL Modding, the home of PortIT and AnimIT: help when a
+port goes wrong, a ping when a new version comes out, and a place to show the wrestlers you make.
 
 ## Build from source
 

@@ -100,7 +100,8 @@ public sealed class Source2kTextures
             {
                 if (Path.GetDirectoryName(Path.GetDirectoryName(p)) != near) continue;
                 string s = Path.GetFileNameWithoutExtension(p).ToLowerInvariant();
-                if (new[] { stem, alt }.Any(n => !string.IsNullOrEmpty(n) && s.StartsWith(n.ToLowerInvariant() + "_"))) o.TryAdd(RoleOf(p), p);
+                // (topsx_color, headx_color...: mods that name their maps with an extra x - the preview showed them white)
+                if (new[] { stem, alt }.Any(n => !string.IsNullOrEmpty(n) && (s.StartsWith(n.ToLowerInvariant() + "_") || s.StartsWith(n.ToLowerInvariant() + "x_")))) o.TryAdd(RoleOf(p), p);
             }
         return o;
     }

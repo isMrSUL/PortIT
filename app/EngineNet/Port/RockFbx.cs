@@ -122,7 +122,8 @@ public sealed class RockFbx
         if (Regex.IsMatch(bas, "(?i)_alpha$")) cands.Add(Regex.Replace(bas, "(?i)_alpha$", ""));
         // (2K23 mods name the skin maps headx / bodyx: the head counted as untextured and was left out as a mouth part -
         //  Charlotte, Raul Mendoza: "no M_Head" crash; others a grey face, 2026-11-13)
-        if (bas.ToLowerInvariant() is "head" or "body") cands.Add(bas + "x");
+        // (... and so do some mods for every piece - topsx, shoesx, maskx: Bray Wyatt pack by JOEMASHUPS, clothes lost)
+        cands.AddRange(cands.ToList().Select(c => c + "x"));
         foreach (var folder in folders)
             foreach (var c in cands)
             {
@@ -460,7 +461,8 @@ public sealed class RockFbx
                 //  Maya's default "lambert1": Enzo Amore 2K, 2026-11-13 - drew as grey cards over his hair and, taken for a
                 //  mask, cut holes in his face under it)
                 string matKey = Regex.Replace(mat, "(?i):skinned$", "").ToLowerInvariant();
-                if (tex == null && defined.Count > 0 && !defined.Contains(matKey) && !NotGear.Contains(name) && !name.StartsWith("M_transB", StringComparison.OrdinalIgnoreCase)
+                if (tex == null && defined.Count > 0 && !defined.Contains(matKey) && !NotGear.Contains(name)
+                    && System.Text.RegularExpressions.Regex.IsMatch(name, @"(?i)^M_(lambert|polySurface|pasted|pCube|pPlane|pCylinder|default)") && !name.StartsWith("M_transB", StringComparison.OrdinalIgnoreCase)
                     && name is not ("M_Teeth" or "M_Tongue" or "M_MouthBag" or "M_Head_Caruncle"))
                 { Report.Add($"{name,-18} left out (no texture: its material {matKey} is not in the wrestler's .mtls files)"); continue; }
                 // (two meshes of one name - Akira Tozawa 2K23 has two M_Tights: the port keys meshes by name, so the second

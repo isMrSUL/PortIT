@@ -166,10 +166,27 @@ public partial class MainWindow : Window
         BudgetBox.SelectionChanged += (_, _) => { SaveSetting("budget", BudgetBox.SelectedIndex.ToString()); HdBox.IsEnabled = FullDetail; };
         HdBox.IsEnabled = FullDetail;
         BigModelButton.Click += async (_, _) => await BigModel();
+        // (bug reports with the model link, to SUL's private Discord channel - 1.3.2)
+        ReportButton.Click += async (_, _) => await new ReportDialog(chosen?.Name ?? "",
+                                                                     Source == "aew" ? "AEW Fight Forever" : "WWE 2K",
+                                                                     ReportDialog.CollectLog(Core.Engine.LastLog, ReportText.Text ?? "")).ShowDialog(this);
         OpenModelButton.Click += async (_, _) => await OpenModel();
-        Opened += async (_, _) => { if (Directory.Exists(SourceBox.Text)) await LoadList(); };
+        DiscordButton.Click += (_, _) => Community.Open(Community.Discord);
+        Opened += async (_, _) =>
+        {
+            // (the Discord server: said once, on the first start after updating - the user's request 2026-11-13)
+            if (!SkipAnnounce && LoadSetting("discord_told") == null)
+            {
+                SaveSetting("discord_told", DateTime.Now.ToString("yyyy-MM-dd"));
+                await Community.Announce(this);
+            }
+            if (Directory.Exists(SourceBox.Text)) await LoadList();
+        };
         InitOutfits();
     }
+
+    /// <summary>(screenshots: Render.Window) don't open the one-time Discord notice over the shot</summary>
+    internal static bool SkipAnnounce;
 
     /// <summary>(screenshots: Render.Window) pick the first listed wrestler whose name contains `name`</summary>
     internal void ShotPick(string name)

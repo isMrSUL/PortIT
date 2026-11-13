@@ -297,7 +297,15 @@ public sealed class FullPort
             off += m["positions"]!.AsArray().Count;
         }
         var J = spec["joints"]!.AsObject();
-        var L = Face.Landmarks(V.ToArray(), T.ToArray(), J["l_eye"]!.AsArray().Select(D).ToArray(), J["r_eye"]!.AsArray().Select(D).ToArray()).L;
+        Dictionary<string, double[]> L;
+        try { L = Face.Landmarks(V.ToArray(), T.ToArray(), J["l_eye"]!.AsArray().Select(D).ToArray(), J["r_eye"]!.AsArray().Select(D).ToArray()).L; }
+        catch (InvalidDataException)
+        {
+            // (a head whose lips meet with no opening between them - every 2K26 Bray Wyatt: the whole port stopped with
+            //  "no mouth opening found", 2026-11-13; the face fit before this found the lips by the source's own lip data)
+            log("beard at the lips: no mouth opening in the head's shape - the beard keeps its weights as they are");
+            return;
+        }
         double my = L["mouth"][1];
         double x0 = Math.Min(L["mouth_l"][0], L["mouth_r"][0]), x1 = Math.Max(L["mouth_l"][0], L["mouth_r"][0]);
         double half = (x1 - x0) / 2, xm = (x0 + x1) / 2, zf = L["mouth"][2];
