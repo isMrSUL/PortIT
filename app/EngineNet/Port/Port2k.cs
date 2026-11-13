@@ -269,13 +269,21 @@ public sealed class Port2k
         R.DropMeshes = new HashSet<string>(["M_Teeth", "M_Tongue"]).Union(LeaveOut)
             .Union(meshes.Where(m => m.Name.ToLowerInvariant().StartsWith("lambert") || m.Name.ToLowerInvariant().StartsWith("polysurface")
                                      || m.Name.ToLowerInvariant().Contains("eyeshadow") || m.Name == "S_Hair").Select(m => m.Name)).ToHashSet();
+        // (eyelashes with no map of their own - 2K draws its default lash texture, SvR has none: Enzo Amore's lashes came out
+        //  as white rims round his eyes in game, 2026-11-13; the head map has its lashes painted)
+        foreach (var m in meshes.Where(m => m.Name.StartsWith("M_transB_eyelash", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(m.Texture)))
+        {
+            R.DropMeshes.Add(m.Name);
+            print($"{m.Name}: no eyelash map in the mod (it drew white) - left out");
+        }
         var bag = meshes.FirstOrDefault(m => m.Name == "M_MouthBag");
         if (bag != null)
         {
             var c0 = Mean0(bag.Verts);
             foreach (var m in meshes)
             {
-                if (ReferenceEquals(m, bag) || !string.IsNullOrEmpty(m.Texture) || R.DropMeshes.Contains(m.Name) || m.N > 8000 || IsCard(m)) continue;
+                if (ReferenceEquals(m, bag) || !string.IsNullOrEmpty(m.Texture) || R.DropMeshes.Contains(m.Name) || m.N > 8000 || IsCard(m)
+                    || m.Name is "M_Head" or "M_Body" or "M_EYE") continue;   // (the head itself, untextured by name, was dropped - Charlotte 2K23)
                 var c = Mean0(m.Verts);
                 if (Blas.Norm(new[] { c[0] - c0[0], c[1] - c0[1], c[2] - c0[2] }) < 4.0)
                 {
@@ -529,6 +537,11 @@ public sealed class Port2k
     /// <summary>hair-card triangles this close to the skin (all 3 corners) are painted under a thinned hair mesh</summary>
     public const double ScalpPaintCm = 1.5;
 
+    /// <summary>full detail: one gear piece over this many points is cut to it (a mod's 270,000-point pants)</summary>
+    public const int FullGearMax = 20000;
+    /// <summary>... only for a piece over this many (a normal heavy top is 25,000: left as it is)</summary>
+    public const int FullGearLimit = 60000;
+
     /// <summary>the cards of a kept hair / beard mesh this close to the skin are painted under it as a base</summary>
     public const double CardBaseCm = 0.8;
 
@@ -774,6 +787,14 @@ public sealed class Port2k
                 foreach (var n in T.Keys.ToList())
                     if (cards.Contains(n)) { cardT[n] = Math.Max(300, (int)(Math.Min(rawCount[n], HairRoom) * scale)); T.Remove(n); }
                 R.Target = T;
+            }
+            else if (scale >= 1.0)
+            {
+                // (full detail keeps every point - but a mod's gear can be absurd: Drew Gulak 2K23's pants 269,738 points and
+                //  jacket 153,197 made one part 3,874 pages, twice what the game draws; such a piece is cut to FullGearMax)
+                R.Target = info.Meshes.Where(x => !cards.Contains(x.Name) && x.Verts > FullGearLimit && x.Name is not ("M_Body" or "M_Head"))
+                                      .ToDictionary(x => x.Name, x => FullGearMax);
+                foreach (var (n, _) in R.Target) log($"{n}: {rawCount[n]} points - more than the game can draw in one piece, cut to {FullGearMax}");
             }
             else if (scale < 1.0)
             {

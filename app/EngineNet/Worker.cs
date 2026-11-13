@@ -19,7 +19,7 @@ namespace PortIT.Engine;
 /// </summary>
 public sealed class Worker
 {
-    public const string Version = "1.3.0";
+    public const string Version = "1.3.1";
     public const string CakPrefix = "cak:", PacPrefix = "pac:";
     readonly Action<string> log;
     readonly CancellationToken cancel;
@@ -194,7 +194,17 @@ public sealed class Worker
             var folder = ModelFileFolder(path) ?? throw new ArgumentException($"No BaseModel folder beside {path}: choose a wrestler's baseModel / attire model file");
             return new JsonObject { ["wrestlers"] = List2k(folder) };
         }
-        if (src == "2k26") return new JsonObject { ["wrestlers"] = IsGameFolder(path) ? ListGame(path) : List2k(path) };
+        if (src == "2k26")
+        {
+            var ws = IsGameFolder(path) ? ListGame(path) : List2k(path);
+            // (a 2K23 game folder chosen: nothing PortIT reads is in it, and the list just stayed empty - user report 2026-11-13)
+            if (ws.Count == 0)
+                throw new ArgumentException($"No wrestler models found in {path}. PortIT reads: the WWE 2K26 game folder; WWE 2K19 - 2K22 " +
+                                            "character packs (chNNNN.pac); and exported wrestler model folders from any 2K (each with a BaseModel " +
+                                            "folder and an attire folder). The game folders of 2K23 - 2K25 cannot be read directly: export the wrestlers " +
+                                            "with a 2K modding tool first, then choose the folder they were exported to.");
+            return new JsonObject { ["wrestlers"] = ws };
+        }
         return new JsonObject { ["wrestlers"] = new JsonArray(SourceAew.Roster(path).Select(r => (JsonNode)new JsonObject
         {
             ["id"] = r.Id, ["name"] = r.Name, ["female"] = r.Female, ["attire"] = r.Attire,
@@ -327,10 +337,13 @@ public sealed class Worker
 
     static string Py31(string s) => s.Length > 31 ? s[..31] : s;
 
-    public static string Manifest(string modId, string name, string bas, bool female, string? pac = null)
+    public static string Manifest(string modId, string name, string bas, bool female, string? pac = null, double height = 1.0, string? moves = null)
     {
         var lines = new List<string> { "type=superstar", $"id={modId}", $"name={Py31(name)}", $"short={Py31(name)}", $"base={bas}", "author=", "version=1.0",
                                        $"made_with=PortIT {Version}", "ratings=80,80,80,80,80,80,80", "call=48" };
+        // (the port's height=: the size against the base superstar's, 0.80 - 1.25; left out at 1.00 - Mod Maker manifest docs)
+        if (moves != null) lines.Add("moves=" + moves);
+        if (Math.Abs(height - 1.0) > 0.001) lines.Add("height=" + height.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
         if (pac != null)
         {
             string? need = null;
@@ -434,7 +447,7 @@ public sealed class Worker
         string source = Str(req, "source");
         if (source == "2k26" && (StrOr(req, "attire") ?? "").ToLowerInvariant().Contains("mattel"))
             throw new InvalidOperationException("This is a Mattel action-figure model: its toy-like face (tiny eyes) has no human face for the face rig to fit. Choose another attire or wrestler.");
-        if (source is not ("2k26" or "aew") || Truthy(req, "classic"))
+        if (source is not ("2k26" or "aew" or "fbx") || Truthy(req, "classic"))
             throw new NotSupportedException("the classic converter route is not part of the C# engine");
         AewBridge? bridge = null;
         string att;
@@ -442,6 +455,12 @@ public sealed class Worker
         {
             log("reading the AEW wrestler...");
             bridge = new AewBridge(Str(req, "path"), Str(req, "id"), work, log);
+            att = bridge.Attire;
+        }
+        else if (source == "fbx")
+        {
+            var cfg = req["fbx"] as JsonObject ?? JsonNode.Parse(File.ReadAllText(Str(req, "path")))!.AsObject();
+            bridge = FbxBridge.Load(cfg, work, log);
             att = bridge.Attire;
         }
         else
@@ -456,7 +475,20 @@ public sealed class Worker
         log($"porting with the Rock / Brock pipeline ({(budget >= Port2k.FullBudget ? "full detail + texture pack" : $"{budget} pages")})...");
         var p2 = new Port2k { MovingHair = Truthy(req, "moving_hair") };
         var leave = (req["leave_out"] as JsonArray ?? []).Select(n => n!.GetValue<string>());
-        var res = p2.Build(Str(req, "id"), att, work, game, budget, template: StrOr(req, "template") is { Length: > 0 } t ? t : null, log: log, print: log,
+        // body type / fighting style: the stock superstar underneath (moves, entrance, stats, size) and, its own model, the body
+        //  the port is posed to - all ports were Big Show's (ch125): "everyone looks like a giant", user reports 2026-11-13
+        int baseId = req["base"] is JsonNode bnode && bnode.GetValueKind() == JsonValueKind.Number ? (int)bnode.GetValue<double>() : 125;
+        if (baseId < 100 || baseId > 321) throw new ArgumentException($"base {baseId}: a stock superstar number is 100 - 321");
+        string? tmpl = StrOr(req, "template") is { Length: > 0 } tq ? tq : null;
+        if (tmpl == null)
+        {
+            string bp = Path.Combine(game, "pac", "ch", $"ch{baseId}.pac");
+            if (File.Exists(bp)) tmpl = bp;
+            else log($"ch{baseId}.pac is not in the game's pac/ch folder - the body is posed to Big Show's (ch125)");
+        }
+        double height = req["height"] is JsonNode hnode && hnode.GetValueKind() == JsonValueKind.Number ? Math.Clamp(hnode.GetValue<double>(), 0.80, 1.25) : 1.0;
+        log($"body type: stock superstar {baseId} (moves, entrance, size){(Math.Abs(height - 1) > 0.001 ? $", height x{height:F2}" : "")}");
+        var res = p2.Build(Str(req, "id"), att, work, game, budget, template: tmpl, log: log, print: log,
                            packPrefix: modId + "_hd", leaveOut: leave, bridge: bridge, packSize: hd is 2048 or 4096 or 8192 ? hd : 4096,
                            use: (req["use"] as JsonArray ?? []).Select(n => n!.GetValue<string>()));
         var pack = new List<string>(res.Pack);
@@ -489,7 +521,7 @@ public sealed class Worker
                 if (entAtt.ToLowerInvariant().EndsWith(".mcd") || entAtt.ToLowerInvariant().EndsWith(".mdl")) entAtt = Path.GetDirectoryName(entAtt) ?? "";
             }
             log($"the entrance outfit ({(entAtt == att && entId == Str(req, "id") ? "this attire" + (entLeave.Count == 0 ? " with all its gear" : "") : entAtt)})...");
-            var eres = new Port2k().Build(entId, entAtt, ework, game, budget, template: StrOr(req, "template") is { Length: > 0 } t2 ? t2 : null, log: log, print: log,
+            var eres = new Port2k().Build(entId, entAtt, ework, game, budget, template: tmpl, log: log, print: log,
                                           packPrefix: modId + "_hd_entrance", leaveOut: entLeave, bridge: entBridge, packSize: hd is 2048 or 4096 or 8192 ? hd : 4096,
                                           use: (ent["use"] as JsonArray ?? []).Select(n => n!.GetValue<string>()));
             string entry = Entrance.AddTo(res.Pac, eres.Pac);
@@ -505,11 +537,26 @@ public sealed class Worker
         if (pack.Count > 0)
         {
             string tp = Path.Combine(final, "texture_pack");
+            // (a port into the same folder again: the earlier build's HD files stayed beside the new ones, and install
+            //  copied them all into the game, 2026-11-12/13)
+            if (Directory.Exists(tp)) foreach (var old in Directory.EnumerateFiles(tp)) File.Delete(old);
             Directory.CreateDirectory(tp);
             foreach (var f in pack) File.Copy(f, Path.Combine(tp, Path.GetFileName(f)), true);
         }
         string name = StrOr(req, "mod_name") is { Length: > 0 } mn ? mn : AewName(req) ?? Path.GetFileName(Str(req, "id"));
-        File.WriteAllText(Path.Combine(final, "manifest.txt"), Manifest(modId, name, "125", false, Path.Combine(final, "ch.pac")).Replace("\n", "\r\n"), new UTF8Encoding(false));   // (Windows text mode, as the Python wrote it)
+        // move-set from another superstar: moves.txt over the base's (only the slots that differ) - user request 2026-11-13
+        string? movesFile = null;
+        int movesFrom = req["moves_from"] is JsonNode mnode && mnode.GetValueKind() == JsonValueKind.Number ? (int)mnode.GetValue<double>() : baseId;
+        string mpath = Path.Combine(final, "moves.txt");
+        if (File.Exists(mpath)) File.Delete(mpath);
+        if (movesFrom != baseId)
+        {
+            var lines = Readers.Profiles.MovesTxt(Readers.Profiles.Read(game), baseId, movesFrom);
+            File.WriteAllText(mpath, string.Join("\r\n", lines) + "\r\n", new UTF8Encoding(false));
+            movesFile = "moves.txt";
+            log($"move-set: superstar {movesFrom}'s ({lines.Count} slots differ from the base's)");
+        }
+        File.WriteAllText(Path.Combine(final, "manifest.txt"), Manifest(modId, name, baseId.ToString(), false, Path.Combine(final, "ch.pac"), height, movesFile).Replace("\n", "\r\n"), new UTF8Encoding(false));   // (Windows text mode, as the Python wrote it)
         var pv = Preview.Render(Path.Combine(final, "ch.pac"), Path.Combine(outDir, modId + "_preview.png"));
         var a0 = res.Rep["attires"]![0]!;
         var report = res.Report;

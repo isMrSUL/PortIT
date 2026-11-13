@@ -721,6 +721,29 @@ public sealed class FullPort
         return total;
     }
 
+    /// <summary>head points this close to a mask's open edge stay (model units: 0.15 = 1.5 cm)</summary>
+    public double HeadHem = 0.15;
+
+    /// <summary>the open edges (used by one triangle) of the gear triangles a / b / c (flat lists), matched by position</summary>
+    static List<(double[] A, double[] B)> MaskEdges(List<double> Al, List<double> Bl, List<double> Cl)
+    {
+        (long, long, long) K(List<double> l, int i) => ((long)Math.Round(l[i] * 1e4), (long)Math.Round(l[i + 1] * 1e4), (long)Math.Round(l[i + 2] * 1e4));
+        var count = new Dictionary<((long, long, long), (long, long, long)), (int N, double[] A, double[] B)>();
+        int n = Al.Count / 3;
+        for (int t = 0; t < n; t++)
+        {
+            var pts = new[] { (K(Al, 3 * t), new[] { Al[3 * t], Al[3 * t + 1], Al[3 * t + 2] }), (K(Bl, 3 * t), new[] { Bl[3 * t], Bl[3 * t + 1], Bl[3 * t + 2] }),
+                              (K(Cl, 3 * t), new[] { Cl[3 * t], Cl[3 * t + 1], Cl[3 * t + 2] }) };
+            for (int e = 0; e < 3; e++)
+            {
+                var (ka, pa) = pts[e]; var (kb, pb) = pts[(e + 1) % 3];
+                var key = ka.CompareTo(kb) < 0 ? (ka, kb) : (kb, ka);
+                count[key] = count.TryGetValue(key, out var c) ? (c.N + 1, c.A, c.B) : (1, pa, pb);
+            }
+        }
+        return count.Values.Where(c => c.N == 1).Select(c => (c.A, c.B)).ToList();
+    }
+
     public int HideHeadUnder(JsonObject spec, HashSet<string> skip, Action<string> log)
     {
         var ms = Meshes(spec);
@@ -798,6 +821,22 @@ public sealed class FullPort
                     if (u >= 0 && w >= 0 && u + w <= 1 && t > 0.7 * L && t < L + 0.15) { cov[v] = true; return; }
                 }
             });
+            // (the head kept by the mask's open edges - its eye holes, mouth, outline: the skin cut right up to the edge left
+            //  gaps the background showed through round Rey Mysterio's eyes, nose and chin in game, 2026-11-13)
+            var hem = MaskEdges(Al, Bl, Cl);
+            if (hem.Count > 0)
+                Parallel.For(0, np_, v =>
+                {
+                    if (!cov[v]) return;
+                    double x = P[3 * v], y = P[3 * v + 1], z = P[3 * v + 2];
+                    foreach (var (a, b) in hem)
+                    {
+                        double dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], ll = dx * dx + dy * dy + dz * dz;
+                        double tt = ll > 1e-20 ? Math.Clamp(((x - a[0]) * dx + (y - a[1]) * dy + (z - a[2]) * dz) / ll, 0, 1) : 0;
+                        double ex = a[0] + dx * tt - x, ey = a[1] + dy * tt - y, ez = a[2] + dz * tt - z;
+                        if (ex * ex + ey * ey + ez * ez < HeadHem * HeadHem) { cov[v] = false; return; }
+                    }
+                });
             var T = Tris(m);
             int nt = T.Length / 3, keptN = 0;
             var keep = new bool[nt];
@@ -813,7 +852,7 @@ public sealed class FullPort
             for (int t = 0; t < nt; t++) if (keep[t]) kt.AddRange([remap[T[3 * t]], remap[T[3 * t + 1]], remap[T[3 * t + 2]]]);
             m["triangles"] = TriRows(kt);
             total += nt - keptN;
-            log($"{Name(m)} under the gear removed: {np_ - used.Length} of {np_} vertices, {nt - keptN} of {nt} triangles");
+            log($"{Name(m)} under the gear removed: {np_ - used.Length} of {np_} vertices, {nt - keptN} of {nt} triangles (under {string.Join(", ", gear.Select(Name))})");
         }
         var keepM = ms.Select(m => m!.AsObject()).Where(m => !(Name(m).StartsWith("M_Head") && m["triangles"]!.AsArray().Count == 0)).Select(m => m.DeepClone()).ToArray();
         spec["attires"]![0]!["meshes"] = new JsonArray(keepM);

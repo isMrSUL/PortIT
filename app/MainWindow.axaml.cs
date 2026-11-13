@@ -57,6 +57,45 @@ public partial class MainWindow : Window
         public override string ToString() => Label;
     }
 
+    /// <summary>a body type / fighting style: the stock superstar underneath the port (moves, entrance, stats, size) - whose
+    /// own model is also the body the port is posed to. Every port was Big Show's (125) until 1.3.1: "everyone looks like
+    /// a giant", user reports 2026-11-13</summary>
+    public sealed record Style(string Label, int Base)
+    {
+        public override string ToString() => Label;
+    }
+
+    const int MaleStyle = 0, FemaleStyle = 10;
+    static readonly Style[] BodyStyles =
+    [
+        new("Heavyweight / All-rounder (John Cena)", 139),
+        new("Heavyweight / Powerhouse (Batista)", 160),
+        new("Heavyweight / Monster (Kane)", 107),
+        new("Heavyweight / Brawler (Stone Cold)", 101),
+        new("Heavyweight / Showman (The Rock)", 100),
+        new("Super heavyweight / Giant (Big Show)", 125),
+        new("Light heavyweight / Technician (Chris Jericho)", 104),
+        new("Light heavyweight / Technician (Bret Hart)", 177),
+        new("Cruiserweight / High-flyer (Rey Mysterio)", 123),
+        new("Cruiserweight / High-flyer (Evan Bourne)", 265),
+        new("Diva / All-rounder (Michelle McCool)", 182),
+        new("Diva / Powerhouse (Beth Phoenix)", 224),
+        new("Diva / High-flyer (Kelly Kelly)", 164),
+        .. new (int, string)[]
+        {
+            (297, "Alicia Fox"), (177, "Bret Hart"), (294, "Brie Bella"), (137, "Chavo Guerrero"), (276, "Christian"), (131, "CM Punk"),
+            (205, "Cody Rhodes"), (281, "David Hart Smith"), (275, "Dolph Ziggler"), (278, "Drew McIntyre"), (110, "Edge"), (292, "Eve"),
+            (268, "Ezekiel Jackson"), (158, "Finlay"), (293, "Gail Kim"), (277, "Goldust"), (195, "Hornswoggle"), (274, "Hurricane"),
+            (267, "Jack Swagger"), (132, "Jake Roberts"), (153, "Jerry Lawler"), (122, "Jimmy Snuka"), (175, "John Morrison"), (165, "JTG"),
+            (176, "Kofi Kingston"), (321, "Luke Gallows"), (179, "Mark Henry"), (291, "Maryse"), (112, "Matt Hardy"), (174, "Melina"),
+            (143, "Mickie James"), (263, "Mike Knox"), (115, "Mr. McMahon"), (135, "MVP"), (290, "Natalya"), (295, "Nikki Bella"),
+            (271, "Primo"), (272, "R-Truth"), (161, "Randy Orton"), (305, "Ricky Steamboat"), (306, "Rob Van Dam"), (201, "Santino Marella"),
+            (178, "Shad Gaspard"), (145, "Shawn Michaels"), (279, "Sheamus"), (208, "Shelton Benjamin"), (261, "Ted DiBiase"), (169, "Terry Funk"),
+            (218, "The Miz"), (296, "Tiffany"), (102, "Triple H"), (282, "Tyson Kidd"), (103, "Undertaker"), (284, "Vance Archer"),
+            (262, "Vladimir Kozlov"), (117, "William Regal"), (283, "Yoshi Tatsu"), (219, "Zack Ryder"),
+        }.Select(x => new Style($"Like {x.Item2}", x.Item1)),
+    ];
+
     static readonly string SettingsPath = Path.Combine(Core.Engine.WorkRoot, "settings.json");
     readonly List<WrestlerItem> all = new();
     readonly ObservableCollection<WrestlerItem> shown = new();
@@ -88,6 +127,10 @@ public partial class MainWindow : Window
         };
         HdBox.SelectedIndex = int.TryParse(LoadSetting("hdsize"), out int hd) && hd is >= 0 and <= 2 ? hd : 1;
         HdBox.SelectionChanged += (_, _) => SaveSetting("hdsize", HdBox.SelectedIndex.ToString());
+        StyleBox.ItemsSource = BodyStyles;
+        StyleBox.SelectedIndex = MaleStyle;
+        MovesBox.ItemsSource = MoveSets;
+        MovesBox.SelectedIndex = 0;
         GameBox.Text = LoadSetting("game") ?? "";
         BudgetBox.SelectedIndex = int.TryParse(LoadSetting("budget"), out int b) ? b : DetectBudget(GameBox.Text);
         GameBox.LostFocus += (_, _) => BudgetBox.SelectedIndex = DetectBudget(GameBox.Text);
@@ -156,7 +199,26 @@ public partial class MainWindow : Window
     {
         MaleChip.IsChecked = !female;
         FemaleChip.IsChecked = female;
+        // (the body type follows: a woman on a man's style got a man's moves and body, and the other way round)
+        bool styleFemale = StyleBox.SelectedItem is Style s && (s.Label.StartsWith("Diva") || FemaleBases.Contains(s.Base));
+        if (styleFemale != female) StyleBox.SelectedIndex = female ? FemaleStyle : MaleStyle;
     }
+
+    /// <summary>the move-set: the body type's own, or a stock superstar's (moves.txt over the base's; user request 2026-11-13)</summary>
+    public sealed record MoveSet(string Label, int From)
+    {
+        public override string ToString() => Label;
+    }
+
+    static readonly MoveSet[] MoveSets =
+    [
+        new("Same as the body type", -1),
+        .. BodyStyles.Select(s => (s.Base, Name: s.Label.Contains('(') ? s.Label[(s.Label.LastIndexOf('(') + 1)..^1] : s.Label["Like ".Length..]))
+                 .GroupBy(x => x.Base).Select(g => g.First()).OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                 .Select(x => new MoveSet($"{x.Name}'s move-set", x.Base)),
+    ];
+
+    static readonly HashSet<int> FemaleBases = [297, 224, 294, 292, 293, 164, 291, 174, 182, 143, 290, 295, 296];
 
     /// <summary>one model file (people's request 2026-11-10: open just the wrestler they want, no game needed)</summary>
     async Task OpenModel()
@@ -356,6 +418,9 @@ public partial class MainWindow : Window
         req["game"] = game;
         req["out"] = outDir;
         req["female"] = FemaleChip.IsChecked == true;
+        req["base"] = (StyleBox.SelectedItem as Style)?.Base ?? 139;
+        req["height"] = (double)(HeightBox.Value ?? 1.00m);
+        if (MovesBox.SelectedItem is MoveSet ms && ms.From > 0) req["moves_from"] = ms.From;
         req["budget"] = (BudgetBox.SelectedItem as Budget)?.Pages ?? 190;
         req["hd_size"] = (HdBox.SelectedItem as HdSize)?.Width ?? 4096;
         req["face"] = FaceCheck.IsChecked == true;

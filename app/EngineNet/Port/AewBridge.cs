@@ -14,7 +14,11 @@ namespace PortIT.Engine.Port;
 /// </summary>
 public sealed class AewBridge
 {
-    static readonly double[] AX = [1, 0, 0, 0, 0, 1, 0, 1, 0];
+    readonly double[] AX = [1, 0, 0, 0, 0, 1, 0, 1, 0];
+    /// <summary>(the head's lip sides: bones on the jaw's side / the upper lip's - AEW's names; an FBX model sets its own)</summary>
+    readonly Regex JawRx = new(@"(^J_Jaw$|Lip_[LRC]_b_|Jaw_)"), UpperRx = new(@"Lip_[LRC]_u_");
+    /// <summary>an FBX model (FbxBridge): the label used in the log</summary>
+    readonly string Tag = "AEW";
     static readonly Dictionary<string, string> Rename = new()
     {
         ["H_Neck_00"] = "H_Neck_tw", ["H_Forearm1_L"] = "H_Elbow_L_tw01", ["H_Forearm2_L"] = "H_Elbow_L_tw02",
@@ -61,6 +65,23 @@ public sealed class AewBridge
         Directory.CreateDirectory(TexDir);
         Directory.CreateDirectory(Path.Combine(Char, "BaseModel", "Textures"));
         Female = src.Female;
+        Make();
+    }
+
+    /// <summary>a model already in the 2K pipeline's axes (an FBX character, FbxBridge): its bones named as 2K's,
+    /// uv v down (as AEW's), mesh kinds set; jaw / upper lip bones by the regexes given</summary>
+    public AewBridge(SourceAew.Model model, string work, Regex jaw, Regex upper, string tag, Action<string>? log = null)
+    {
+        this.log = log ?? (_ => { });
+        src = model;
+        AX = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+        JawRx = jaw; UpperRx = upper; Tag = tag;
+        Folder = model.Name;
+        Char = Path.Combine(work, "fbx_char", model.Name);
+        TexDir = Path.Combine(Char, Attire, "Textures");
+        Directory.CreateDirectory(TexDir);
+        Directory.CreateDirectory(Path.Combine(Char, "BaseModel", "Textures"));
+        Female = model.Female;
         Make();
     }
 
@@ -269,17 +290,18 @@ public sealed class AewBridge
                 foreach (int b in bonesIn) { var e = w.FirstOrDefault(x => x.Bone == b); if (e.W != null) for (int i = 0; i < n; i++) s[i] += e.W[i]; }
                 return s;
             }
-            if (me.Kind == "head")
+            if (me.Kind is "head" or "headonly")
             {
                 var inW = Enumerable.Range(0, bnames.Count).Where(b => w.Any(x => x.Bone == b));
-                var jw = SumOf(inW.Where(b => Regex.IsMatch(bnames[b], @"(^J_Jaw$|Lip_[LRC]_b_|Jaw_)")));
-                var uw = SumOf(inW.Where(b => Regex.IsMatch(bnames[b], @"Lip_[LRC]_u_")));
+                var jw = SumOf(inW.Where(b => JawRx.IsMatch(bnames[b])));
+                var uw = SumOf(inW.Where(b => UpperRx.IsMatch(bnames[b])));
                 bas.M.LipSrc = Enumerable.Range(0, n).Select(i => jw[i] > uw[i] && jw[i] > 0.05 ? 1 : uw[i] >= jw[i] && uw[i] > 0.05 ? -1 : 0).ToArray();
                 var hw = SumOf(head.Order());
                 int nt = bas.M.Tris.Length / 3;
-                var th = Enumerable.Range(0, nt).Select(t => ((hw[bas.M.Tris[3 * t]] + hw[bas.M.Tris[3 * t + 1]]) + hw[bas.M.Tris[3 * t + 2]]) / 3 > 0.5).ToArray();
+                var th = Enumerable.Range(0, nt).Select(t => me.Kind == "headonly" || ((hw[bas.M.Tris[3 * t]] + hw[bas.M.Tris[3 * t + 1]]) + hw[bas.M.Tris[3 * t + 2]]) / 3 > 0.5).ToArray();
                 foreach (var (nm, mat, s) in new[] { ("M_Body", "body", th.Select(x => !x).ToArray()), ("M_Head", "head", th) })
                 {
+                    if (!s.Any(x => x)) continue;
                     var part = Sub(bas, s);
                     part.M.Name = nm; part.M.Material = mat;
                     part.M.Texture = nm == "M_Head" ? TexCrop(mat, me, part.M.Uv) : Tex(mat, me);
@@ -288,6 +310,7 @@ public sealed class AewBridge
                 skin = (V, w);
                 skinMe = me;
             }
+            else if (me.Kind == "body") { bas.M.Name = "M_Body"; bas.M.Material = "body"; bas.M.Texture = Tex("body", me); meshes.Add(bas); }
             else if (me.Kind == "teeth") { bas.M.Name = "M_AEWMouth"; bas.M.Material = "aewmouth"; bas.M.Texture = Tex("aewmouth", me, ao: true); meshes.Add(bas); }
             else if (me.Kind == "eye")
             {
@@ -303,6 +326,7 @@ public sealed class AewBridge
                 while (names.Contains(nm + (k > 1 ? k.ToString() : ""))) k++;
                 nm += k > 1 ? k.ToString() : ""; mat += k > 1 ? k.ToString() : "";
                 names.Add(nm);
+                if (me.Cutout) mat += "_ALPHA";
                 bas.M.Name = nm; bas.M.Material = mat; bas.M.Texture = Tex(mat, me);
                 meshes.Add(bas);
             }
@@ -335,7 +359,7 @@ public sealed class AewBridge
                 meshes[hi] = rest;
                 meshes.Add(inner);
                 ShadeInner(inner.M);
-                log($"AEW: the inside of the lips ({inner.M.N} vertices) -> M_InnerMouth");
+                log($"{Tag}: the inside of the lips ({inner.M.N} vertices) -> M_InnerMouth");
             }
         }
         // winding: each mesh's triangles agree with its own normals again (AEW's swap of Y and Z mirrored them)
@@ -359,7 +383,7 @@ public sealed class AewBridge
             if (neg > pos)
                 for (int t = 0; t < nt; t++) (m.Tris[3 * t + 1], m.Tris[3 * t + 2]) = (m.Tris[3 * t + 2], m.Tris[3 * t + 1]);
         }
-        log($"AEW: {meshes.Count} meshes for the 2K pipeline - {string.Join(", ", meshes.Select(m => m.M.Name))}");
+        log($"{Tag}: {meshes.Count} meshes for the 2K pipeline - {string.Join(", ", meshes.Select(m => m.M.Name))}");
     }
 
     List<BMesh> Hair(BMesh bas, SourceAew.SourceMesh me, HashSet<int> beardb)
@@ -400,7 +424,7 @@ public sealed class AewBridge
         }
         int nt = bas.M.Tris.Length / 3;
         var triBeard = Enumerable.Range(0, nt).Select(t => isBeard.GetValueOrDefault(comp[bas.M.Tris[3 * t]])).ToArray();
-        log($"AEW hair: {comp.Distinct().Count()} cards, {isBeard.Values.Count(x => x)} of them beard");
+        log($"{Tag} hair: {comp.Distinct().Count()} cards, {isBeard.Values.Count(x => x)} of them beard");
         var o = new List<BMesh>();
         foreach (var (nm, mat, sel) in new[] { ("M_Hair", "hair", triBeard.Select(x => !x).ToArray()), ("M_Beard", "beard", triBeard) })
         {

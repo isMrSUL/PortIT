@@ -60,6 +60,14 @@ static string PyFloat(double d)
 static string[] HI(Img im) => [im.Mode, im.W.ToString(), im.H.ToString(), H(im.Px)];
 
 if (args.Length < 2) { Console.WriteLine("usage: portit-check <check> <ref>"); return 2; }
+// (PORTIT_CULTURE=es-ES: run as on a Spanish Windows - decimal commas - user reports 2026-11-13)
+if (Environment.GetEnvironmentVariable("PORTIT_CULTURE") is { Length: > 0 } cul)
+{
+    var ci = new System.Globalization.CultureInfo(cul);
+    System.Globalization.CultureInfo.DefaultThreadCurrentCulture = ci; System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = ci;
+    System.Globalization.CultureInfo.CurrentCulture = ci; System.Globalization.CultureInfo.CurrentUICulture = ci;
+    Console.WriteLine("culture: " + ci.Name + " (decimal '" + ci.NumberFormat.NumberDecimalSeparator + "')");
+}
 int bad = 0, ok = 0;
 var t0 = System.Diagnostics.Stopwatch.StartNew();
 switch (args[0])
@@ -1553,6 +1561,7 @@ switch (args[0])
     }
     case "alphas":
     {
+        if (!args[1].EndsWith(".png", StringComparison.OrdinalIgnoreCase)) { Console.WriteLine("alphas: the first argument is the OUTPUT .png"); return 2; }
         // (args: out.png dds...) - each dds's alpha channel side by side (at most 1024 wide each), and the colour too
         var ims = args.Skip(2).Select(f => ImageIO.Decode(File.ReadAllBytes(f)).ToRgba()).ToList();
         int w = 1024, h = 512;
@@ -1699,6 +1708,328 @@ switch (args[0])
         // (args: pac out.png W H topFrac [color.dds]) - a big close-up render for checking by eye
         PortIT.Engine.Port.Preview.RenderZoom(args[1], args[2], int.Parse(args[3]), int.Parse(args[4]), double.Parse(args[5], System.Globalization.CultureInfo.InvariantCulture), args.Length > 6 ? args[6] : null);
         Console.WriteLine(args[2]); ok++;
+        break;
+    }
+    case "cawmenu":
+    {
+        // (args[1]: the game's pac folder; args[2] optional category) - edit.pac MENU: per category its record count, per
+        //  record (60 bytes) the model / texture ids (u16 at +12 / +14) and colour slots (+20), as caw_part.py reads them
+        var top = Epac.Read(File.ReadAllBytes(Path.Combine(args[1], "edit", "edit.pac"))).Groups[0].Entries.ToDictionary(e => e.NameText, e => e.Data);
+        var menu0 = Pach.Read(Bpe.Unpack(top["MENU"])).First(e => e.Id == 0).Data;
+        foreach (var c in Pach.Read(Bpe.Unpack(menu0)))
+        {
+            if (args.Length > 2 && c.Id != uint.Parse(args[2])) continue;
+            var k = Bpe.Unpack(c.Data);
+            int total = BitConverter.ToUInt16(k, 0);
+            int withModel = 0;
+            var lines = new List<string>();
+            for (int r = 0; r < total && 12 + (r + 1) * 60 <= k.Length; r++)
+            {
+                var rec = k.AsSpan(12 + r * 60, 60);
+                ushort mid = BitConverter.ToUInt16(rec[12..]), tid = BitConverter.ToUInt16(rec[14..]);
+                if (mid != 0xFFFF) withModel++;
+                if (args.Length > 2) lines.Add($"  rec {r,3}: model M{mid:X3} tex T{tid:X3} colours {rec[20]}  bytes {Convert.ToHexString(rec[..24].ToArray())}");
+            }
+            Console.WriteLine($"category {c.Id,3}: {total} records, {withModel} with a model");
+            foreach (var l in lines.Take(400)) Console.WriteLine(l);
+        }
+        ok++;
+        break;
+    }
+    case "grid":
+    {
+        // (args: out.png cols cell img...) - images in a grid, each cell x cell (aspect kept), a light frame between
+        int cols = int.Parse(args[2]), cell = int.Parse(args[3]), k = args.Length - 4, rows = (k + cols - 1) / cols;
+        var o = new Img(cols * cell, rows * cell, 3);
+        for (int j = 0; j < k; j++)
+        {
+            var src = ImageIO.Load(args[4 + j]).ToRgba();
+            double s = Math.Min((double)cell / src.W, (double)cell / src.H);
+            int w = Math.Max(1, (int)(src.W * s)), h = Math.Max(1, (int)(src.H * s));
+            var im = PortIT.Engine.Imaging.Resample.Resize(src, w, h, PortIT.Engine.Imaging.Filter.Bilinear);
+            int ox = (j % cols) * cell, oy = (j / cols) * cell;
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    for (int c = 0; c < 3; c++) o.Px[3 * ((oy + y) * o.W + ox + x) + c] = im.Px[4 * (y * w + x) + c];
+            for (int x = 0; x < cell; x++) for (int c = 0; c < 3; c++) o.Px[3 * (oy * o.W + ox + x) + c] = 200;
+            for (int y = 0; y < cell; y++) for (int c = 0; c < 3; c++) o.Px[3 * ((oy + y) * o.W + ox) + c] = 200;
+        }
+        ImageIO.SavePng(o, args[1]);
+        ok++;
+        break;
+    }
+    case "preview":
+    {
+        // (args[1]: out folder, args[2..]: pacs) - each pac's front / side render (attire 0) as <name>.png
+        Directory.CreateDirectory(args[1]);
+        foreach (var p in args.Skip(2))
+            try { PortIT.Engine.Port.Preview.Render(p, Path.Combine(args[1], Path.GetFileNameWithoutExtension(p) + ".png")); Console.WriteLine("ok " + p); }
+            catch (Exception ex) { Console.WriteLine($"FAIL {p}: {ex.Message}"); }
+        ok++;
+        break;
+    }
+    case "pactree":
+    {
+        // (args[1]: a pac (EPK8 / EPAC); args[2] optional "nodes") - groups, entries, PACH ids, per JBOY: meshes, nodes, textures
+        var data = File.ReadAllBytes(args[1]);
+        bool showNodes = args.Length > 2 && args[2] == "nodes";
+        string? saveDir = args.Length > 3 && args[2] == "save" ? args[3] : null;
+        if (saveDir != null) Directory.CreateDirectory(saveDir);
+        void Walk(string path, byte[] blob, int depth, string full = "")
+        {
+            var raw = Bpe.Unpack(blob);
+            full = full.Length > 0 ? full + "_" + path : path;
+            if (saveDir != null && !Pach.IsPach(raw)) File.WriteAllBytes(Path.Combine(saveDir, full + ".bin"), raw);
+            string pad = new string(' ', 2 * depth);
+            if (Pach.IsPach(raw))
+            {
+                var es = Pach.Read(raw);
+                Console.WriteLine($"{pad}{path}: PACH {es.Count} [{string.Join(" ", es.Select(e => e.Id.ToString("x")))}]");
+                foreach (var e in es) Walk($"{e.Id:x4}", e.Data, depth + 1, full);
+            }
+            else if (Jboy.IsJboy(raw))
+            {
+                var m = Jboy.Read(raw);
+                Console.WriteLine($"{pad}{path}: JBOY '{m.Name}' {raw.Length / 1024} KB, {m.Meshes.Count} meshes, {m.Meshes.Sum(s => s.Verts.Count)} verts, {m.Nodes.Count} nodes, tex [{string.Join(",", m.Textures)}]");
+                foreach (var s in m.Meshes)
+                {
+                    var b = s.Verts.Count > 0 ? (s.Verts.Min(v => v.PosNrm[1]), s.Verts.Max(v => v.PosNrm[1])) : (0f, 0f);
+                    Console.WriteLine($"{pad}   mesh {s.Shader,-12} v {s.Verts.Count,5} pal [{string.Join(",", s.Palette.Select(p => p < m.Nodes.Count ? m.Nodes[p].Name : p.ToString()))}] y {b.Item1:F2}..{b.Item2:F2}");
+                }
+                if (showNodes) Console.WriteLine($"{pad}   nodes: {string.Join(" ", m.Nodes.Select(n => n.Name))}");
+            }
+            else Console.WriteLine($"{pad}{path}: {System.Text.Encoding.Latin1.GetString(raw, 0, Math.Min(4, raw.Length)).Replace('\0', '.')} {raw.Length} bytes");
+        }
+        if (Epk8.IsEpk8(data))
+            foreach (var g in Epk8.Read(data).Groups)
+            {
+                Console.WriteLine($"GROUP {g.TypeText} {g.Entries.Count}");
+                foreach (var e in g.Entries) Walk(e.NameText, e.Data, 1);
+            }
+        else if (data.AsSpan(0, 4).SequenceEqual("EPAC"u8))
+            foreach (var g in Epac.Read(data).Groups)
+            {
+                Console.WriteLine($"GROUP {g.TypeText} {g.Entries.Count}");
+                foreach (var e in g.Entries) Walk(e.NameText, e.Data, 1);
+            }
+        else Console.WriteLine("not EPK8: " + System.Text.Encoding.Latin1.GetString(data, 0, 4));
+        ok++;
+        break;
+    }
+    case "fbxmeshes":
+    {
+        // (args[1]: .fbx [bone regex]) - each mesh: size, box, top bones by weight, uv box; bones matching the regex
+        var sc = PortIT.Engine.Readers.SourceFbx.Load(args[1]);
+        Console.WriteLine($"{sc.Bones.Count} bones, {sc.Meshes.Count} meshes, unit {sc.UnitCm}");
+        foreach (var m in sc.Meshes)
+        {
+            int n = m.Count;
+            double Mn(int k) => Enumerable.Range(0, n).Min(i => m.V[3 * i + k]);
+            double Mx(int k) => Enumerable.Range(0, n).Max(i => m.V[3 * i + k]);
+            var top = m.W.Select(kv => (sc.Bones[kv.Key].Name, S: kv.Value.Sum())).OrderByDescending(x => x.S).Take(5);
+            double tot = m.W.Values.Sum(w => w.Sum());
+            Console.WriteLine($"{m.Name,-12} v {n,6} t {m.Tris.Length / 3,6}  x {Mn(0),6:F1}..{Mx(0),6:F1} y {Mn(1),6:F1}..{Mx(1),6:F1} z {Mn(2),6:F1}..{Mx(2),6:F1}" +
+                              $"  uv {m.Uv.Where((_, i) => i % 2 == 0).Min():F2}..{m.Uv.Where((_, i) => i % 2 == 0).Max():F2},{m.Uv.Where((_, i) => i % 2 == 1).Min():F2}..{m.Uv.Where((_, i) => i % 2 == 1).Max():F2}" +
+                              $"  [{string.Join(" ", m.Textures)}]");
+            Console.WriteLine("     " + string.Join("  ", top.Select(t => $"{t.Name} {100 * t.S / tot:F0}%")));
+        }
+        if (args.Length > 2)
+            for (int i = 0; i < sc.Bones.Count; i++)
+                if (System.Text.RegularExpressions.Regex.IsMatch(sc.Bones[i].Name, args[2]))
+                {
+                    var w = sc.Bones[i].World;
+                    Console.WriteLine($"  {sc.Bones[i].Name,-34} {w[12],8:F2} {w[13],8:F2} {w[14],8:F2}  parent {(sc.Bones[i].Parent >= 0 ? sc.Bones[sc.Bones[i].Parent].Name : "-")}{(sc.Bones[i].Skinned ? "" : "  (no skin)")}");
+                }
+        ok++;
+        break;
+    }
+    case "bonechunk":
+    {
+        // (args: .mdl) - the BONE chunk's header words and the first bytes, then each parsed bone (name, parent, T)
+        var m = PortIT.Engine.Readers.Mcd.Load(args[1]);
+        int p = m.Chunks.GetValueOrDefault("BONE", -1);
+        var R = m.Raw;
+        uint W(int o) => BitConverter.ToUInt32(R, o);
+        Console.WriteLine($"{m.Game} BONE at {p}: size {W(p + 4)}  words {W(p + 8)} {W(p + 12)} {W(p + 16)} {W(p + 20)}  bones parsed {m.Bones.Count}");
+        foreach (var (b, i) in m.Bones.Select((b, i) => (b, i)).Where(x => x.i < 12 || x.b.Name.StartsWith("J_Foot") || x.b.Name.StartsWith("J_Knee") || x.b.Name.StartsWith("J_Head")))
+            Console.WriteLine($"  {i,3} {b.Name,-22} parent {b.Parent,4}  T {b.T[0],7:F2} {b.T[1],7:F2} {b.T[2],7:F2}");
+        ok++;
+        break;
+    }
+    case "moveset":
+    {
+        // (args: game base from) - the moves.txt a mod on `base` gets to play with `from`'s move-set
+        var pros = PortIT.Engine.Readers.Profiles.Read(args[1]);
+        Console.WriteLine($"{pros.Count} profiles, sizes {string.Join(",", pros.Values.Select(v => v.Length).Distinct())}");
+        var lines = PortIT.Engine.Readers.Profiles.MovesTxt(pros, int.Parse(args[2]), int.Parse(args[3]));
+        Console.WriteLine($"{lines.Count} slots differ: {string.Join(" ", lines.Take(12))} ...");
+        ok++;
+        break;
+    }
+    case "mdlinfo":
+    {
+        // (args: .mdl/.mcd...) - version, bones, each mesh: name, object, vertices, influences
+        foreach (var p in args.Skip(1))
+        {
+            var m = PortIT.Engine.Readers.Mcd.Load(p);
+            Console.WriteLine($"== {Path.GetFileName(p)}  {m.Game}  bones {m.Bones.Count}  lods {m.Lods.Count}");
+            for (int k = 0; k < m.Meshes.Count; k++)
+                Console.WriteLine($"  {m.Meshes[k].Material,-24} obj {m.Meshes[k].Object,-20} {m.Meshes[k].Vertices,6} verts  inf {m.Meshes[k].Influences}");
+        }
+        ok++;
+        break;
+    }
+    case "crop":
+    {
+        // (args: out.png img x y w h) - a part of an image (DDS too), as is
+        if (!args[1].EndsWith(".png", StringComparison.OrdinalIgnoreCase)) { Console.WriteLine("crop: the first argument is the OUTPUT .png"); return 2; }
+        var im = ImageIO.Decode(File.ReadAllBytes(args[2]), Path.GetExtension(args[2])).ToRgba();
+        int cx = int.Parse(args[3]), cy = int.Parse(args[4]), cw = int.Parse(args[5]), chh = int.Parse(args[6]);
+        var o = new Img(cw, chh, 3);
+        for (int y = 0; y < chh; y++) for (int x = 0; x < cw; x++) for (int c = 0; c < 3; c++) o.Px[3 * (y * cw + x) + c] = im.Px[4 * ((cy + y) * im.W + cx + x) + c];
+        ImageIO.SavePng(o, args[1]);
+        Console.WriteLine($"{im.W}x{im.H}");
+        ok++;
+        break;
+    }
+    case "imgdiff":
+    {
+        // (args: out.png a b) - b where it differs from a (by more than 8), dimmed a elsewhere
+        if (!args[1].EndsWith(".png", StringComparison.OrdinalIgnoreCase)) { Console.WriteLine("imgdiff: the first argument is the OUTPUT .png"); return 2; }
+        var a = ImageIO.Load(args[2]).ToRgba(); var b = ImageIO.Load(args[3]).ToRgba();
+        var o = new Img(a.W, a.H, 3); int nd = 0;
+        for (int i = 0; i < a.W * a.H; i++)
+        {
+            bool d = Enumerable.Range(0, 3).Any(c => Math.Abs(a.Px[4 * i + c] - b.Px[4 * i + c]) > 8);
+            if (d) nd++;
+            for (int c = 0; c < 3; c++) o.Px[3 * i + c] = d ? b.Px[4 * i + c] : (byte)(a.Px[4 * i + c] / 4);
+        }
+        ImageIO.SavePng(o, args[1]);
+        Console.WriteLine($"{nd} pixels differ");
+        ok++;
+        break;
+    }
+    case "uvrange":
+    {
+        // (args: wrestler_folder attire out_dir) - each source mesh's uv box and how many triangles reach past 0-1
+        var rf = new PortIT.Engine.Port.RockFbx { QuickRead = true };
+        var (ms, bns) = rf.Build(args[1], args[2], args[3]);
+        foreach (var b in bns.Where(b => b.Src is "J_Eye_L" or "J_Eye_R" or "J_Head"))
+            Console.WriteLine($"bone {b.Src,-8} {b.World[3],7:F2} {b.World[7],7:F2} {b.World[11],7:F2}");
+        foreach (var m in ms.Where(m => m.Name == "M_Head"))
+        {
+            // (triangles whose uv sits in a top corner square of the head map)
+            var corner = new List<int>();
+            for (int t = 0; t < m.Tris.Length; t += 3)
+            {
+                double u = 0, v = 0;
+                for (int k = 0; k < 3; k++) { u += m.Uv[2 * m.Tris[t + k]] / 3; v += m.Uv[2 * m.Tris[t + k] + 1] / 3; }
+                if (v > 0.93 && (u < 0.07 || u > 0.93)) corner.Add(t);
+            }
+            if (corner.Count > 0)
+            {
+                var pts = corner.SelectMany(t => new[] { m.Tris[t], m.Tris[t + 1], m.Tris[t + 2] }).Distinct().ToList();
+                Console.WriteLine($"head corner-square triangles: {corner.Count}, y {pts.Min(i => m.Verts[3 * i + 1]):F2}..{pts.Max(i => m.Verts[3 * i + 1]):F2} z {pts.Min(i => m.Verts[3 * i + 2]):F2}..{pts.Max(i => m.Verts[3 * i + 2]):F2} x {pts.Min(i => m.Verts[3 * i]):F2}..{pts.Max(i => m.Verts[3 * i]):F2}");
+            }
+            else Console.WriteLine("head corner-square triangles: 0");
+        }
+        foreach (var m in ms.Where(m => m.Name == "M_EYE"))
+            foreach (var (side, sel) in new[] { ("L(+x)", 1), ("R(-x)", -1) })
+            {
+                var idx = Enumerable.Range(0, m.N).Where(i => Math.Sign(m.Verts[3 * i]) == sel).ToList();
+                if (idx.Count == 0) { Console.WriteLine($"eye {side}: no points"); continue; }
+                double[] lo = [9e9, 9e9, 9e9], hi = [-9e9, -9e9, -9e9];
+                foreach (int i in idx) for (int c = 0; c < 3; c++) { lo[c] = Math.Min(lo[c], m.Verts[3 * i + c]); hi[c] = Math.Max(hi[c], m.Verts[3 * i + c]); }
+                Console.WriteLine($"eye {side}: {idx.Count} points  centre {(lo[0] + hi[0]) / 2:F2} {(lo[1] + hi[1]) / 2:F2} {(lo[2] + hi[2]) / 2:F2}  size {hi[0] - lo[0]:F2} {hi[1] - lo[1]:F2} {hi[2] - lo[2]:F2}");
+            }
+        foreach (var m in ms)
+        {
+            int n = m.Uv.Length / 2;
+            if (n == 0) continue;
+            double u0 = 9, u1 = -9, v0 = 9, v1 = -9;
+            for (int i = 0; i < n; i++) { u0 = Math.Min(u0, m.Uv[2 * i]); u1 = Math.Max(u1, m.Uv[2 * i]); v0 = Math.Min(v0, m.Uv[2 * i + 1]); v1 = Math.Max(v1, m.Uv[2 * i + 1]); }
+            int outside = 0;
+            for (int t = 0; t < m.Tris.Length; t += 3)
+                if (Enumerable.Range(0, 3).Any(k => m.Uv[2 * m.Tris[t + k]] < -0.001 || m.Uv[2 * m.Tris[t + k]] > 1.001 || m.Uv[2 * m.Tris[t + k] + 1] < -0.001 || m.Uv[2 * m.Tris[t + k] + 1] > 1.001)) outside++;
+            Console.WriteLine($"{m.Name,-20} u {u0,6:F2}..{u1,6:F2}  v {v0,6:F2}..{v1,6:F2}  {outside} of {m.Tris.Length / 3} triangles past 0-1");
+            double[] blo = [9e9, 9e9, 9e9], bhi = [-9e9, -9e9, -9e9];
+            for (int i = 0; i < m.N; i++) for (int c = 0; c < 3; c++) { blo[c] = Math.Min(blo[c], m.Verts[3 * i + c]); bhi[c] = Math.Max(bhi[c], m.Verts[3 * i + c]); }
+            int unw = Enumerable.Range(0, m.N).Count(i => m.Weights.Sum(w => w.W[i]) <= 0);
+            Console.WriteLine($"{"",20} box x {blo[0],7:F1}..{bhi[0],7:F1} y {blo[1],7:F1}..{bhi[1],7:F1} z {blo[2],7:F1}..{bhi[2],7:F1}  unweighted {unw}");
+            if (args.Length > 4 && m.Name == args[4])
+                foreach (var (bi, wv) in m.Weights.OrderByDescending(x => x.W.Sum()).Take(14))
+                {
+                    double sw = wv.Sum(); if (sw <= 0) continue;
+                    double[] c3 = [0, 0, 0]; for (int i = 0; i < m.N; i++) for (int c = 0; c < 3; c++) c3[c] += wv[i] * m.Verts[3 * i + c] / sw;
+                    var bw = bns[bi].World;
+                    Console.WriteLine($"{"",24}{bns[bi].Src,-22} weight {sw,7:F0}  points at {c3[0],6:F1} {c3[1],6:F1} {c3[2],6:F1}  bone at {bw[3],6:F1} {bw[7],6:F1} {bw[11],6:F1}");
+                }
+        }
+        ok++;
+        break;
+    }
+    case "sheet":
+    {
+        if (!args[1].EndsWith(".png", StringComparison.OrdinalIgnoreCase)) { Console.WriteLine("sheet: the first argument is the OUTPUT .png"); return 2; }
+        // (args: out.png img...) - each image 256 x 256 over magenta (its alpha shown), side by side
+        int k = args.Length - 2;
+        var o = new Img(256 * k, 256, 3);
+        for (int j = 0; j < k; j++)
+        {
+            var im = PortIT.Engine.Imaging.Resample.Resize(ImageIO.Load(args[2 + j]).ToRgba(), 256, 256, PortIT.Engine.Imaging.Filter.Bilinear);
+            for (int y = 0; y < 256; y++)
+                for (int x = 0; x < 256; x++)
+                {
+                    int s = 4 * (y * 256 + x), d = 3 * (y * o.W + 256 * j + x);
+                    double a = im.Px[s + 3] / 255.0;
+                    byte[] bg = [255, 0, 255];
+                    for (int c = 0; c < 3; c++) o.Px[d + c] = (byte)(im.Px[s + c] * a + bg[c] * (1 - a));
+                }
+        }
+        ImageIO.SavePng(o, args[1]);
+        ok++;
+        break;
+    }
+    case "tmplpos":
+    {
+        // (args[1]: template pac or null) - where the SvR template's main bones sit (Face.World11)
+        var conv = new PortIT.Engine.Build.SvrBuilder.Template(args[1] == "-" ? null : args[1]);
+        var Wt = PortIT.Engine.Port.Face.World11(conv);
+        for (int i = 0; i < conv.TNodes.Count; i++)
+            if (System.Text.RegularExpressions.Regex.IsMatch(conv.TNodes[i].Name, "^(root|atama|l_momo|r_momo|l_te|l_eye|r_eye|d_kuchi|l_tsumasaki|mune)$"))
+                Console.WriteLine($"{conv.TNodes[i].Name,-12} {Wt[i][3],8:F3} {Wt[i][7],8:F3} {Wt[i][11],8:F3}");
+        ok++;
+        break;
+    }
+    case "fbxdump":
+    {
+        // (args[1]: a binary .fbx -> its units, meshes (+ layers), materials and their texture files, skins, bones)
+        var f = new PortIT.Engine.Readers.Fbx(args[1]);
+        f.Gather();
+        Console.WriteLine($"version {f.Version}  unit {f.UnitCm} cm  up axis {f.UpAxis} sign {f.UpSign}");
+        foreach (var o in f.Objects.Values.Where(o => o.Kind == "Geometry" && o.Sub == "Mesh"))
+        {
+            var n = o.Node;
+            var model = o.Out.Select(x => x.O).FirstOrDefault(x => x.Kind == "Model");
+            var mats = model?.In.Select(x => x.O).Where(x => x.Kind == "Material").ToList() ?? [];
+            var skins = o.In.Select(x => x.O).Where(x => x.Kind == "Deformer" && x.Sub == "Skin").ToList();
+            int clusters = skins.Sum(s => s.In.Count(x => x.O.Kind == "Deformer"));
+            string layers = string.Join(",", n.Kids.Where(k => k.Name.StartsWith("LayerElement")).Select(k => $"{k.Name[12..]}:{k["MappingInformationType"]?.S(0)}/{k["ReferenceInformationType"]?.S(0)}"));
+            Console.WriteLine($"MESH {model?.Name} pts {n["Vertices"]?.D().Length / 3} pv {n["PolygonVertexIndex"]?.I().Length} clusters {clusters} [{layers}]");
+            foreach (var m in mats)
+            {
+                var tex = m.In.Where(x => x.O.Kind == "Texture").Select(x => $"{x.Prop}={Path.GetFileName((x.O.Node["RelativeFilename"]?.S(0) ?? x.O.Node["FileName"]?.S(0) ?? "").Replace('\\', '/'))}");
+                Console.WriteLine($"   mat {m.Name}: {string.Join("  ", tex)}");
+            }
+        }
+        var limbs = f.Objects.Values.Count(o => o.Kind == "Model" && o.Sub == "LimbNode");
+        Console.WriteLine($"{limbs} bones; poses: {string.Join(",", f.Objects.Values.Where(o => o.Kind == "Pose").Select(o => o.Sub + ":" + o.Node.All("PoseNode").Count()))}");
+        foreach (var o in f.Objects.Values.Where(o => o.Kind == "Model" && o.Sub == "LimbNode" && (args.Length < 3 || System.Text.RegularExpressions.Regex.IsMatch(o.Name, args[2]))))
+        {
+            var w = f.World(o);
+            Console.WriteLine($"  {o.Name,-40} {w[12],8:F3} {w[13],8:F3} {w[14],8:F3}   parent {f.ParentModel(o)?.Name}");
+        }
+        ok++;
         break;
     }
     case "run":

@@ -94,6 +94,16 @@ public static class Mtls
         return o;
     }
 
+    /// <summary>every material name any .mtls under folder defines (lower case, no ':skinned'); empty when it has none</summary>
+    public static HashSet<string> Defined(string folder)
+    {
+        var o = new HashSet<string>();
+        foreach (var p in GlobOrder(folder, ".mtls"))
+            try { foreach (var (name, _) in Read(p)) o.Add(name); }
+            catch (IOException) { }
+        return o;
+    }
+
     /// <summary>glob('**/*ext', recursive=True)'s order: the folder itself, then every sub folder depth first (pre-order,
     /// directory order); each folder's matching files in directory order</summary>
     public static IEnumerable<string> GlobOrder(string folder, string ext)

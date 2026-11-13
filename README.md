@@ -48,6 +48,9 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
 - **Moving hair (test)** — long hair and braids swing in matches like the game's own long-haired superstars: PortIT
   adds hair bone chains and the game's hair settings. Try it first in the 3D view's **Hair** buttons (the head moves,
   or you turn the wrestler yourself and the hair reacts).
+- **Body type, height and moveset** — pick the game's superstar underneath the port (his size in the game, his moves,
+  entrance and stats; the Divas also give a woman's body), make the wrestler taller or shorter (0.80 – 1.25), and take
+  the moves and taunts of any superstar of the game.
 - **Faces that move** — a stock SvR head's face rig is fitted onto the new face, so the game's own face animations
   (talking, yelling, selling) work. Which skin is upper lip and which is lower comes from the source game's own data
   (2K's FACS jaw-open shape, AEW's lip and jaw bones), the mouth corners stay round, and AEW wrestlers keep their own
@@ -77,7 +80,12 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
 
 ## Found a bug?
 
-Open a [new issue](https://github.com/isMrSUL/PortIT/issues/new/choose): the form asks for the game, the wrestler, your settings, screenshots and (if you can) the model files - with those I can see the same problem and fix it. Please never share paid models without the creator's permission.
+Open a [new issue](https://github.com/isMrSUL/PortIT/issues/new/choose): the form asks for the game, the wrestler, your settings and screenshots.
+
+**To get a problem fixed, I need the model.** Most bugs only happen with one model's files - without them I can't
+see the problem or test the fix. Send the link to the model files to me (SUL) in a **private message on Discord
+(DMs)**. Please don't post model links in public channels or GitHub issues, and never share paid models without the
+creator's permission.
 
 ## Build from source
 

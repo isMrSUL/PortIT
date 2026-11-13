@@ -143,7 +143,10 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 |---|---|
 | **Attire** | the wrestler's look, when there is more than one. |
 | **Entrance outfit** | **None** (walks out in the ring attire), **This attire with all its gear**, or **another attire**. See below. |
-| **Body: Male / Female** | the wrestler's body. It matters for *Classic window* ports. For full-detail ports the model is the same either way. For women, also set a female *base* superstar in the Mod Maker later (see [section 7](#7-share-it-or-edit-it-in-the-mod-maker-svrmod)). |
+| **Body: Male / Female** | the wrestler's body. It also picks the default body type below: a man's or a woman's. |
+| **Body type / fighting style** | the game's own superstar underneath the port: his **size in the game**, his **moves**, his **entrance** and his stats. Pick a style (for example *Heavyweight / All-rounder (John Cena)*, *Cruiserweight / High-flyer (Rey Mysterio)*, *Diva / Powerhouse (Beth Phoenix)*) or any superstar (*Like ...*). The Divas also give the model a woman's body. New in 1.3.1: before it, every port was Big Show underneath, so everyone looked like a giant. See [Body type, height and moveset](#body-type-height-and-moveset). |
+| **Height in game** | taller or shorter than the superstar underneath: 1.05 = 5% taller (0.80 - 1.25). About 0.90 - 1.15 plays best. |
+| **Moveset** | **Same as the body type**, or the moves and taunts of any superstar of the game. |
 | **Model memory** | how much detail the model keeps. See below. |
 | **HD texture size** | (full detail only) how big the HD texture pack is: **4K** (the default, about 21 MB a wrestler), **8K** (sharpest, about 85 MB a wrestler) or **2K** (about 6 MB). Many ported wrestlers at 8K add up to gigabytes. |
 | **Face animation** | leave it **on**. The wrestler then talks, yells and sells with the game's own face animations. |
@@ -151,6 +154,20 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 | **Mod id** | the mod's folder name (letters, numbers and `_` only). Two mods with the same id replace each other. |
 | **Name in game** | the name shown in the game (up to 31 characters). |
 | **Output folder** | where PortIT saves the finished mods. |
+
+### Body type, height and moveset
+
+Every SvR 2011 superstar mod stands on one of the game's own superstars (its *base*). The base decides:
+
+- **the size in the game** - the game scales every wrestler by the base's size. Big Show (PortIT's only base before
+  1.3.1) made every port a giant;
+- **the moves, the taunts and the entrance motions**, and the starting stats;
+- for the **Divas**, the body too: the women's skeletons are smaller, and the model is shaped to it.
+
+**Height in game** then makes the wrestler taller or shorter than the base (the mod's `height=`).
+
+**Moveset** takes the moves and taunts of another superstar instead, while the body type keeps the size and the
+entrance (PortIT writes a `moves.txt` into the mod). You can still change single moves later in the Mod Maker.
 
 ### Entrance outfit and ring attire
 
@@ -282,10 +299,7 @@ Every port is also saved, next to its folder in the output folder, as:
 
 **Edit it in the Mod Maker:** open the `.svrmod` in the SvR 2011 **Mod Maker** to change the name, the stats
 (ratings), the abilities, the moves, the entrance, the theme music, the select pictures and more. PortIT gives every
-port simple starting values (all ratings 80, the base superstar 125), so it is worth a visit.
-
-**For women:** in the Mod Maker, set the **base** to a female superstar. The base gives the moves, the entrance
-motions and other per-character data.
+port simple starting values (all ratings 80; the base and moves you picked), so it is worth a visit.
 
 When you share a port, share the **SHARE THIS** zip: people often shared the `.svrmod` alone and forgot the HD
 textures.
@@ -329,7 +343,11 @@ AEW), the attire, the model memory choice, the report text and the `worker.log`.
 
 ### Reporting a bug
 
-Open a [new issue](https://github.com/isMrSUL/PortIT/issues/new/choose) and pick **Bug in a port** or **Error or crash**. The form asks for what I need to see the same problem: the game the model came from, the wrestler and attire, Classic or Full detail, where you see it (PortIT preview, Mod Maker, the game), screenshots and, if you can, a link to the model files. Please never share paid models (Patreon or similar) without the creator's permission.
+Open a [new issue](https://github.com/isMrSUL/PortIT/issues/new/choose) and pick **Bug in a port** or **Error or crash**. The form asks for what I need to see the same problem: the game the model came from, the wrestler and attire, Classic or Full detail, where you see it (PortIT preview, Mod Maker, the game) and screenshots. Please never share paid models (Patreon or similar) without the creator's permission.
+
+**To get a problem fixed, I need the model.** Most bugs only happen with one model's files, and without them I can't
+see the problem or test the fix. Send the link to the model files to me **in a private message on Discord (DMs)** -
+please don't post model links in public channels or GitHub issues.
 
 ## 10. Where PortIT keeps its files
 

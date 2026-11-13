@@ -175,13 +175,17 @@ public sealed class Mcd
             BoneF0 = F32(p + 8); BoneF1 = F32(p + 12);
             n = (int)U32(p + 16); q = p + 24; rec = 33;
         }
-        else if (Version == 0x25) { n = (size - 12) / 32; q = p + 20; rec = 32; }
+        // (2K23: [.., bones, jiggle bones, ..] then 32-byte records whose last int is the jiggle index; a jiggle bone's 32
+        //  bytes of jiggle data follow its record. Counting bones by size read those blocks as bones: Akira Tozawa's
+        //  feet bones landed at head height and his boots / legs shot out in spikes, 2026-11-13)
+        else if (Version == 0x25) { n = (int)U32(p + 12); q = p + 20; rec = 32; }
         else { n = (int)U32(p + 8); q = p + 12; rec = 28; }
         for (int i = 0; i < n; i++)
         {
             var b = new Bone { Name = S(U16(q)), Parent = (short)U16(q + 2) };
             for (int c = 0; c < 3; c++) { b.T[c] = F32(q + 4 + 4 * c); b.Euler[c] = F32(q + 16 + 4 * c); }
             if (rec == 33) { b.Flag = Raw[q + 28]; b.Jiggle = BinaryPrimitives.ReadInt32LittleEndian(Raw.AsSpan(q + 29)); }
+            else if (rec == 32) b.Jiggle = BinaryPrimitives.ReadInt32LittleEndian(Raw.AsSpan(q + 28));
             q += rec;
             if (b.Jiggle != -1)
             {

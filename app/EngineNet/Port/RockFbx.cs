@@ -120,6 +120,9 @@ public sealed class RockFbx
         // (hair_ALPHA's map is hair_color.DDS: without this the hair took one flat colour from its vertex colours -
         //  Adam Cole '20 (2K25) came out light beige, his hair is dark brown; 2026-11-12)
         if (Regex.IsMatch(bas, "(?i)_alpha$")) cands.Add(Regex.Replace(bas, "(?i)_alpha$", ""));
+        // (2K23 mods name the skin maps headx / bodyx: the head counted as untextured and was left out as a mouth part -
+        //  Charlotte, Raul Mendoza: "no M_Head" crash; others a grey face, 2026-11-13)
+        if (bas.ToLowerInvariant() is "head" or "body") cands.Add(bas + "x");
         foreach (var folder in folders)
             foreach (var c in cands)
             {
@@ -384,6 +387,7 @@ public sealed class RockFbx
         var byName = keep.ToDictionary(i => src[i].Name, i => nw[i]);
         var meshes = new List<Mesh>();
         var colors = Mtls.ColorMaps(chr);
+        var defined = Mtls.Defined(chr);
         TexAlias.Clear();
         LeftOutTris.Clear(); LeftOutNames.Clear();
         aliasTex = null;
@@ -396,6 +400,14 @@ public sealed class RockFbx
             {
                 var mb = model.Meshes[k];
                 string name = mb.Material;
+                // (the eyes under another spelling - Enzo Amore 2K: "M_Eye_l" holds both eyes; taken for gear, the head
+                //  in front of the eyeballs was cut away as "under the gear": holes round his eyes and brows, 2026-11-13)
+                if (Regex.IsMatch(name, @"^M_Eye(_[LR])?$", RegexOptions.IgnoreCase) && name != "M_EYE"
+                    && model.Meshes.Count(o => Regex.IsMatch(o.Material, @"^M_Eye(_[LR])?$", RegexOptions.IgnoreCase)) == 1)
+                {
+                    Report.Add($"{name,-18} read as M_EYE (the eyes)");
+                    name = "M_EYE";
+                }
                 if (model.Lods.Count == 0) continue;
                 if (DropMeshes.Contains(name))
                 {
@@ -444,6 +456,22 @@ public sealed class RockFbx
                 var dirs = new List<string> { folder, Path.Combine(chr, "BaseModel"), adir };
                 var tex = TextureFor(mat, dirs, outDir, colors.GetValueOrDefault(Regex.Replace(mat, "(?i):skinned$", "").ToLowerInvariant()),
                                      MaterialAlias(chr, dirs, mat).GetValueOrDefault("_color"));
+                // (a gear piece with no texture whose material no .mtls of the wrestler defines - a modder's leftover on
+                //  Maya's default "lambert1": Enzo Amore 2K, 2026-11-13 - drew as grey cards over his hair and, taken for a
+                //  mask, cut holes in his face under it)
+                string matKey = Regex.Replace(mat, "(?i):skinned$", "").ToLowerInvariant();
+                if (tex == null && defined.Count > 0 && !defined.Contains(matKey) && !NotGear.Contains(name) && !name.StartsWith("M_transB", StringComparison.OrdinalIgnoreCase)
+                    && name is not ("M_Teeth" or "M_Tongue" or "M_MouthBag" or "M_Head_Caruncle"))
+                { Report.Add($"{name,-18} left out (no texture: its material {matKey} is not in the wrestler's .mtls files)"); continue; }
+                // (two meshes of one name - Akira Tozawa 2K23 has two M_Tights: the port keys meshes by name, so the second
+                //  took the first's data and its legs shot out in spikes, 2026-11-13) -> M_Tights2
+                if (!NotGear.Contains(name) && meshes.Any(o => o.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    int dup = 2;
+                    while (meshes.Any(o => o.Name.Equals(name + dup, StringComparison.OrdinalIgnoreCase))) dup++;
+                    Report.Add($"{name,-18} a second mesh of this name - kept as {name + dup}");
+                    name += dup;
+                }
                 var me = new Mesh { Name = name, Verts = Rows.TimesMatT(verts, Turn), Normals = Rows.TimesMatT(nrm, Turn), Uv = uv, Tris = tris, Material = mat, Texture = tex, Weights = w };
                 meshes.Add(me);
                 if (name == "M_Head")

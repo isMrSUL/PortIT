@@ -7,7 +7,9 @@ body:
     attributes:
       value: |
         Thank you for reporting! I need to see the same problem on my PC to fix it, so please fill in every part.
-        A good example: *"Rock 1999 from WWE 2K25, attire 1, Full detail. In the game the back of his calves has holes (screenshot). In the PortIT preview it looks fine (screenshot). Files: (link)"*
+        A good example: *"Rock 1999 from WWE 2K25, attire 1, Full detail. In the game the back of his calves has holes (screenshot). In the PortIT preview it looks fine (screenshot)."*
+
+        **To get it fixed, I need the model files.** Send the link to me (SUL) in a **private message on Discord (DMs)**. Please don't post model links here: issues are public.
   - type: dropdown
     id: game
     attributes:
@@ -70,15 +72,12 @@ body:
     attributes:
       label: Anything else
       description: Meshes you unticked, an entrance outfit, the PortIT version, or the full error text if one showed.
-  - type: input
+  - type: checkboxes
     id: files
     attributes:
-      label: Link to the model files (optional, but it helps the most)
-      description: A Google Drive / Mega link to the 2K mod folder or pack. With the same files I can find the real cause much faster.
-  - type: checkboxes
-    id: paid
-    attributes:
-      label: Paid models
+      label: The model files
+      description: Most bugs only happen with one model's files - without them I can't see the problem or test the fix. Send the link (Google Drive / Mega) to me (SUL) in a private message on Discord, not here (issues are public).
       options:
+        - label: I will send the link to the model files to SUL by Discord DM.
         - label: The files I share are not a paid model (Patreon or similar) - or I have the creator's permission.
           required: true

@@ -396,15 +396,27 @@ public sealed class RockModel
     /// <summary>(texture name + suffix, e.g. head_color) -&gt; a file used in its place: the head map with hair painted in</summary>
     public Dictionary<string, string> TexOverride = new(StringComparer.OrdinalIgnoreCase);
 
+    readonly Dictionary<string, Dictionary<string, string>> colorMaps = [];
     public string? FindTex(string chr, string attire, string bas, string suffix)
     {
         if (TexOverride.TryGetValue(bas + suffix, out var over) && File.Exists(over)) return over;
-        foreach (var folder in TexFirst.Concat([Path.Combine(chr, attire, "Textures"), Path.Combine(chr, "BaseModel", "Textures")]))
+        string? Search(string stem)
         {
-            if (!Directory.Exists(folder)) continue;
-            foreach (var f in Directory.EnumerateFiles(folder))
-                if (Path.GetFileName(f).ToLowerInvariant().Split('.')[0] == (bas + suffix).ToLowerInvariant()) return f;
+            foreach (var folder in TexFirst.Concat([Path.Combine(chr, attire, "Textures"), Path.Combine(chr, "BaseModel", "Textures")]))
+            {
+                if (!Directory.Exists(folder)) continue;
+                foreach (var f in Directory.EnumerateFiles(folder))
+                    if (Path.GetFileName(f).ToLowerInvariant().Split('.')[0] == stem.ToLowerInvariant()) return f;
+            }
+            return null;
         }
+        if (Search(bas + suffix) is { } hit) return hit;
+        // (the .mtls names another map for this material - 2K23 mods: body -> "bodyx_color", head -> "headx_color";
+        //  without this the skin took a flat grey: Cody Rhodes, Ricochet, Eric Bischoff, Joaquin Wilde, 2026-11-13)
+        if (!colorMaps.TryGetValue(chr, out var cm)) colorMaps[chr] = cm = PortIT.Engine.Readers.Mtls.ColorMaps(chr);
+        if (cm.TryGetValue(bas.ToLowerInvariant(), out var cmap) && cmap.EndsWith("_color", StringComparison.OrdinalIgnoreCase)
+            && Search(cmap[..^"_color".Length] + suffix) is { } viaMtls) return viaMtls;
+        if (bas.ToLowerInvariant() is "head" or "body" && Search(bas + "x" + suffix) is { } xHit) return xHit;
         var a = Fbx.TexAlias.GetValueOrDefault(bas.ToLowerInvariant())?.GetValueOrDefault(suffix);
         if (a != null && File.Exists(a)) return a;
         // (hair_ALPHA -> hair_color.DDS, as RockFbx.TextureFor)

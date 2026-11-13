@@ -42,6 +42,9 @@ by SUL (MrSUL) - https://github.com/isMrSUL/PortIT
    and Install. (It is also on the download page as PortIT-BigModel-DLL-$version.zip.)
 
 Keep all the files together: PortIT.exe needs the Engine folder next to it.
+
+Found a bug? To get it fixed I need the model: send the link to the model files to SUL in a private message on
+Discord (DMs) - not in public channels or GitHub issues.
 PortIT is free and open source (MIT License, see LICENSE). If you share a changed version, keep the LICENSE file
 and please credit SUL (MrSUL).
 "@ | Set-Content (Join-Path $dist 'Read Me First.txt') -Encoding UTF8

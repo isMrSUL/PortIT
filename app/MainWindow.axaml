@@ -155,6 +155,21 @@
               </StackPanel>
             </StackPanel>
             <StackPanel Spacing="3">
+              <TextBlock Classes="label" Text="Body type / fighting style" />
+              <ComboBox x:Name="StyleBox" HorizontalAlignment="Stretch" MaxDropDownHeight="420"
+                        ToolTip.Tip="The game's own superstar underneath the port: his moves, entrance, stats and his size in the game (the Divas: also the women's body the model is shaped to).&#x0a;Big Show (the old PortIT default) makes everyone a giant. Change the moves later in the Mod Maker if you like." />
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Classes="label" Text="Height in game (0.80 - 1.25)" />
+              <NumericUpDown x:Name="HeightBox" Minimum="0.80" Maximum="1.25" Increment="0.01" Value="1.00" FormatString="0.00" HorizontalAlignment="Stretch"
+                             ToolTip.Tip="Taller or shorter than the superstar underneath: 1.05 = 5% taller. About 0.90 - 1.15 plays best (grapples and hand contacts)." />
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Classes="label" Text="Moveset" />
+              <ComboBox x:Name="MovesBox" HorizontalAlignment="Stretch" MaxDropDownHeight="420"
+                        ToolTip.Tip="The moves and taunts: the body type's own, or copied from one of the game's superstars.&#x0a;The body type still sets the size and the entrance. Change single moves later in the Mod Maker." />
+            </StackPanel>
+            <StackPanel Spacing="3">
               <TextBlock Classes="label" Text="Model memory" />
               <ComboBox x:Name="BudgetBox" HorizontalAlignment="Stretch" />
             </StackPanel>
