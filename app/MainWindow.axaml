@@ -135,12 +135,14 @@
 
       <!-- right: the port settings, the report -->
       <Border Grid.Column="4" Classes="panel" Padding="14">
-        <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <!-- (the choices scroll: on a 1366x768 screen the Port button fell off the bottom - user report 2026-11-14) -->
+        <Grid RowDefinitions="Auto,*,Auto,Auto,Auto">
           <Grid ColumnDefinitions="Auto,*">
             <Border Classes="bar" />
             <TextBlock Grid.Column="1" Classes="h" Text="Port" />
           </Grid>
-          <StackPanel Grid.Row="1" Spacing="10" Margin="0,12,0,10">
+          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="10" Margin="0,12,8,10">
             <TextBlock x:Name="ChosenText" Classes="sub" TextWrapping="Wrap" Text="No wrestler chosen." />
             <StackPanel Spacing="3">
               <TextBlock Classes="label" Text="Attire" />
@@ -164,9 +166,29 @@
                         ToolTip.Tip="The game's own superstar underneath the port: his moves, entrance, stats and his size in the game (the Divas: also the women's body the model is shaped to).&#x0a;Big Show (the old PortIT default) makes everyone a giant. Change the moves later in the Mod Maker if you like." />
             </StackPanel>
             <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="Height in game (0.80 - 1.25)" />
-              <NumericUpDown x:Name="HeightBox" Minimum="0.80" Maximum="1.25" Increment="0.01" Value="1.00" FormatString="0.00" HorizontalAlignment="Stretch"
-                             ToolTip.Tip="Taller or shorter than the superstar underneath: 1.05 = 5% taller. About 0.90 - 1.15 plays best (grapples and hand contacts)." />
+              <TextBlock Classes="label" Text="Height" />
+              <Grid ColumnDefinitions="*,8,Auto">
+                <NumericUpDown x:Name="HeightCmBox" Grid.Column="0" Minimum="120" Maximum="250" Increment="1" Value="180" FormatString="0" HorizontalAlignment="Stretch"
+                               ToolTip.Tip="How tall the wrestler stands in the game, in centimetres." />
+                <!-- (no spinner buttons: with them the boxes were too narrow and 11 inches showed as "1") -->
+                <Grid x:Name="HeightFtPanel" Grid.Column="0" ColumnDefinitions="*,4,Auto,10,*,4,Auto" IsVisible="False">
+                  <NumericUpDown x:Name="HeightFtBox" Grid.Column="0" Minimum="3" Maximum="8" Increment="1" Value="5" FormatString="0" ShowButtonSpinner="False" />
+                  <TextBlock Grid.Column="2" Classes="faint" Text="ft" VerticalAlignment="Center" />
+                  <NumericUpDown x:Name="HeightInBox" Grid.Column="4" Minimum="0" Maximum="11" Increment="1" Value="11" FormatString="0" ShowButtonSpinner="False" />
+                  <TextBlock Grid.Column="6" Classes="faint" Text="in" VerticalAlignment="Center" />
+                </Grid>
+                <ComboBox x:Name="HeightUnitBox" Grid.Column="2" Width="104" />
+              </Grid>
+              <TextBlock x:Name="HeightHint" Classes="faint" Text="" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Classes="label" Text="Weight" />
+              <Grid ColumnDefinitions="*,8,Auto">
+                <NumericUpDown x:Name="WeightBox" Grid.Column="0" Minimum="30" Maximum="300" Increment="1" Value="100" FormatString="0" HorizontalAlignment="Stretch"
+                               ToolTip.Tip="SvR 2011 keeps no weight number. It only has a weight class (normal, heavyweight, super heavyweight), which comes from the body type - PortIT checks your weight against it." />
+                <ComboBox x:Name="WeightUnitBox" Grid.Column="2" Width="104" />
+              </Grid>
+              <TextBlock x:Name="WeightHint" Classes="faint" Text="" TextWrapping="Wrap" />
             </StackPanel>
             <StackPanel Spacing="3">
               <TextBlock Classes="label" Text="Moveset" />
@@ -202,6 +224,10 @@
                 <Button Grid.Column="2" x:Name="OutBrowse" Content="…" />
               </Grid>
             </StackPanel>
+          </StackPanel>
+          </ScrollViewer>
+          <!-- (the buttons stay out of the scroller: the Port button must be on screen whatever the screen size) -->
+          <StackPanel Grid.Row="2" Spacing="8" Margin="0,10,0,0">
             <Button x:Name="PortButton" Classes="accent" Content="Port to SvR 2011" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False" />
             <Grid ColumnDefinitions="*,8,*">
               <Button x:Name="OpenButton" Content="Open folder" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False" />
@@ -211,12 +237,12 @@
             <Button x:Name="AttireButton" Content="Install as attire…" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False"
                     ToolTip.Tip="The port as an attire of a superstar the game has (a new attire, or replacing one) - Mods\Attires, like the Mod Maker's Attires page" />
           </StackPanel>
-          <Border Grid.Row="2" Classes="well">
+          <Border Grid.Row="3" Classes="well" MinHeight="100" MaxHeight="240" Margin="0,10,0,0">
             <ScrollViewer>
               <TextBlock x:Name="ReportText" Classes="mono" TextWrapping="Wrap" Text="The port report shows here: shine levels, memory pages, what was changed." />
             </ScrollViewer>
           </Border>
-          <ProgressBar Grid.Row="3" x:Name="Busy" IsIndeterminate="True" IsVisible="False" Margin="0,10,0,0" Height="4" />
+          <ProgressBar Grid.Row="4" x:Name="Busy" IsIndeterminate="True" IsVisible="False" Margin="0,10,0,0" Height="4" />
         </Grid>
       </Border>
     </Grid>

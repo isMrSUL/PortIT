@@ -50,8 +50,9 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
   adds hair bone chains and the game's hair settings. Try it first in the 3D view's **Hair** buttons (the head moves,
   or you turn the wrestler yourself and the hair reacts).
 - **Body type, height and moveset** — pick the game's superstar underneath the port (his size in the game, his moves,
-  entrance and stats; the Divas also give a woman's body), make the wrestler taller or shorter (0.80 – 1.25), and take
-  the moves and taunts of any superstar of the game.
+  entrance and stats; the Divas also give a woman's body), set the **height in cm or in feet and inches**, and take
+  the moves and taunts of any superstar of the game. PortIT measures the model it built and works the game's own
+  scaling out for you; it also tells you which weight class a weight belongs in (SvR 2011 keeps no weight number).
 - **Faces that move** — a stock SvR head's face rig is fitted onto the new face, so the game's own face animations
   (talking, yelling, selling) work. Which skin is upper lip and which is lower comes from the source game's own data
   (2K's FACS jaw-open shape, AEW's lip and jaw bones), the mouth corners stay round, and AEW wrestlers keep their own

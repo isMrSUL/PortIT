@@ -249,17 +249,20 @@ public sealed class RockFbx
         {
             var h = new bool[body.N];
             foreach (int i in list) h[i] = true;
-            if (LeftOutTris.Count > 0)
+            // (2K's list hides the skin under the WHOLE attire, so a piece that is not in this port - unticked by the
+            //  user, or dropped by PortIT - used to leave a see-through hole. A hidden vertex now only goes when a piece
+            //  we actually keep is over it: skin left under gear costs a few triangles, a hole is a bug you can see.
+            //  Holes on the arms and torso with the jacket left out: user reports, 2026-11-14.)
             {
-                // (the list is for the whole attire: skin under a piece the user left out - and under no kept piece - shows)
                 var kept = meshes.Where(m => !NotGear.Contains(m.Name) && !DropMeshes.Contains(m.Name))
                                  .SelectMany(m => m.Tris.SelectMany(v => new[] { m.Verts[3 * v], m.Verts[3 * v + 1], m.Verts[3 * v + 2] })).ToArray();
-                var underOut = Covered(body.Verts, body.Normals, LeftOutTris.ToArray(), HideOutCm, HideInCm);
                 var underKept = kept.Length > 0 ? Covered(body.Verts, body.Normals, kept, HideOutCm, HideInCm) : new bool[body.N];
                 int shown = 0;
                 for (int i = 0; i < body.N; i++)
-                    if (h[i] && underOut[i] && !underKept[i]) { h[i] = false; shown++; }
-                Report.Add($"M_Body: {shown} vertices of the hidden list shown again (under the left-out {string.Join(", ", LeftOutNames)})");
+                    if (h[i] && !underKept[i]) { h[i] = false; shown++; }
+                if (shown > 0)
+                    Report.Add($"M_Body: {shown} vertices the attire hides kept - no gear of this outfit is over them" +
+                               (LeftOutNames.Count > 0 ? $" (left out: {string.Join(", ", LeftOutNames)})" : ""));
             }
             int nt0 = body.Tris.Length / 3;
             var keepL = Enumerable.Range(0, nt0).Where(t => !(h[body.Tris[3 * t]] && h[body.Tris[3 * t + 1]] && h[body.Tris[3 * t + 2]])).ToList();

@@ -19,7 +19,7 @@ namespace PortIT.Engine;
 /// </summary>
 public sealed class Worker
 {
-    public const string Version = "1.3.1";
+    public const string Version = "1.3.3";
     public const string CakPrefix = "cak:", PacPrefix = "pac:";
     readonly Action<string> log;
     readonly CancellationToken cancel;
@@ -507,6 +507,14 @@ public sealed class Worker
                 entBridge = new AewBridge(Str(req, "path"), Str(req, "id"), ework, log);
                 entAtt = entBridge.Attire;
             }
+            // (an FBX model needs its own bridge too: without this the entrance build looked for a 2K model that is not
+            //  there and the entrance outfit failed - 2026-11-14)
+            else if (source == "fbx")
+            {
+                var ecfg = req["fbx"] as JsonObject ?? JsonNode.Parse(File.ReadAllText(Str(req, "path")))!.AsObject();
+                entBridge = FbxBridge.Load(ecfg, ework, log);
+                entAtt = entBridge.Attire;
+            }
             else if (!string.IsNullOrEmpty(entAsked))
             {
                 if (entAsked.ToLowerInvariant().Contains("mattel"))
@@ -530,6 +538,12 @@ public sealed class Worker
             entranceLines.Add($"entrance outfit: {(entAtt == att && entId == Str(req, "id") ? "this attire" + (entLeave.Count == 0 ? " with all its gear" : "") : entAtt)} - " +
                               $"{entrancePages} memory pages, in ch.pac as {entry} (worn for the entrance, the ring attire after it)");
             entranceLines.AddRange(eres.Report.Where(l => l.StartsWith("checks:") || l.StartsWith("warning")).Select(l => "entrance " + l));
+            // (people reported "the entrance gear and the ring attire look the same": they are, when the same attire is
+            //  built twice with the same pieces. The entrance outfit only differs if the ring leaves something out.)
+            if (entAtt == att && entId == Str(req, "id") &&
+                entLeave.Select(n => n.ToLowerInvariant()).ToHashSet().SetEquals(leave.Select(n => n.ToLowerInvariant())))
+                entranceLines.Add("warning: the entrance outfit and the ring attire are the same model - untick in the ring outfit " +
+                                  "the pieces that should come off (a coat, a hood, a shirt), or choose another attire for the entrance.");
         }
         string final = Path.Combine(outDir, modId);
         Directory.CreateDirectory(final);
@@ -555,6 +569,55 @@ public sealed class Worker
             File.WriteAllText(mpath, string.Join("\r\n", lines) + "\r\n", new UTF8Encoding(false));
             movesFile = "moves.txt";
             log($"move-set: superstar {movesFrom}'s ({lines.Count} slots differ from the base's)");
+        }
+        // A real height in cm / feet-inches (Port.Sizing). The game has no height field: a mod inherits the base
+        // superstar's body scale (4096 = 1.00, 1 unit = 10 cm) and height= multiplies it. So the height= a typed
+        // height needs comes from the model we just built and the base's own scale - worked out here, after the
+        // build, because only then is the model's real size known.
+        if (req["height_cm"] is JsonNode tcm && tcm.GetValueKind() == JsonValueKind.Number && tcm.GetValue<double>() > 0)
+        {
+            double target = tcm.GetValue<double>();
+            double? modelCm = Sizing.ModelHeightCm(Path.Combine(work, "model.json"));
+            var sizes = Sizing.BaseSizes(game);
+            if (modelCm is double mcm && sizes.TryGetValue(baseId, out var bs))
+            {
+                var (mult, got, ok) = Sizing.HeightMult(target, mcm, bs.Scale);
+                height = mult;
+                log($"height: asked {Sizing.Pretty(target)}; the model is {Sizing.Pretty(mcm)} without its hair, " +
+                    $"body type {baseId} carries scale {bs.Scale} -> height x{mult:F2}, in game {Sizing.Pretty(got)}");
+                if (ok) res.Report.Add($"height in game: {Sizing.Pretty(got)} (height x{mult:F2} on body type {baseId})");
+                else
+                {
+                    var (lo, hi) = Sizing.Reach(mcm, bs.Scale);
+                    res.Report.Add($"warning: body type {baseId} cannot reach {Sizing.Pretty(target)} - with this model it goes from " +
+                                   $"{Sizing.Pretty(lo)} to {Sizing.Pretty(hi)} (the game's height= only runs 0.80 - 1.25). " +
+                                   $"It is {Sizing.Pretty(got)} instead: pick a {(target < got ? "shorter" : "taller")} body type to get closer.");
+                }
+            }
+            else log($"height: {Sizing.Pretty(target)} asked, but " +
+                     (modelCm == null ? "the model's own size could not be measured" : $"body type {baseId} has no record in the game's chEtc.pac") +
+                     $" - height x{height:F2} as set");
+        }
+        // A weight in kg / lbs. There is no weight= in this game - the only weight it keeps is the weight class
+        // byte in the superstar's record, and a mod inherits that from the body type too. So a typed weight can
+        // only be checked against the body type, not written: say so plainly rather than pretend it was set.
+        if (req["weight_kg"] is JsonNode wkg && wkg.GetValueKind() == JsonValueKind.Number && wkg.GetValue<double>() > 0)
+        {
+            double kg = wkg.GetValue<double>();
+            bool fem = req["female"]?.GetValue<bool>() ?? false;
+            int want = Sizing.WeightClassOf(kg, fem);
+            var sizes = Sizing.BaseSizes(game);
+            string wtxt = $"{kg:F0} kg ({Sizing.KgToLbs(kg):F0} lb)";
+            if (sizes.TryGetValue(baseId, out var bw))
+            {
+                if (bw.WeightClass == want)
+                    res.Report.Add($"weight {wtxt}: body type {baseId} is in the game's {Sizing.ClassName(want)} class, which matches.");
+                else
+                    res.Report.Add($"warning: weight {wtxt} belongs in the game's {Sizing.ClassName(want)} class, but body type {baseId} is " +
+                                   $"{Sizing.ClassName(bw.WeightClass)}. SvR 2011 has no weight of its own - it only has this class, and a mod " +
+                                   $"takes it from the body type, so pick a {Sizing.ClassName(want)} body type if the class matters to you.");
+            }
+            log($"weight: {wtxt} -> the game's {Sizing.ClassName(want)} class (it keeps no weight number, only the class, from the body type)");
         }
         File.WriteAllText(Path.Combine(final, "manifest.txt"), Manifest(modId, name, baseId.ToString(), false, Path.Combine(final, "ch.pac"), height, movesFile).Replace("\n", "\r\n"), new UTF8Encoding(false));   // (Windows text mode, as the Python wrote it)
         var pv = Preview.Render(Path.Combine(final, "ch.pac"), Path.Combine(outDir, modId + "_preview.png"));

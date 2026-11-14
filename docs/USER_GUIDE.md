@@ -148,7 +148,8 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 | **Entrance outfit** | **None** (walks out in the ring attire), **This attire with all its gear**, or **another attire**. See below. |
 | **Body: Male / Female** | the wrestler's body. It also picks the default body type below: a man's or a woman's. |
 | **Body type / fighting style** | the game's own superstar underneath the port: his **size in the game**, his **moves**, his **entrance** and his stats. Pick a style (for example *Heavyweight / All-rounder (John Cena)*, *Cruiserweight / High-flyer (Rey Mysterio)*, *Diva / Powerhouse (Beth Phoenix)*) or any superstar (*Like ...*). The Divas also give the model a woman's body. New in 1.3.1: before it, every port was Big Show underneath, so everyone looked like a giant. See [Body type, height and moveset](#body-type-height-and-moveset). |
-| **Height in game** | taller or shorter than the superstar underneath: 1.05 = 5% taller (0.80 - 1.25). About 0.90 - 1.15 plays best. |
+| **Height** | how tall the wrestler stands in the game, in **cm** or in **feet and inches**. New in 1.3.3: before it this was a 1.05 = 5% taller number, which was hard to read. PortIT measures the model it just built and works the rest out. |
+| **Weight** | in **kg** or in **lbs**. SvR 2011 keeps no weight number at all - only a weight *class* - so PortIT checks your weight against the body type instead of writing it. See [Height and weight](#height-and-weight). |
 | **Moveset** | **Same as the body type**, or the moves and taunts of any superstar of the game. |
 | **Model memory** | how much detail the model keeps. See below. |
 | **HD texture size** | (full detail only) how big the HD texture pack is: **4K** (the default, about 21 MB a wrestler), **8K** (sharpest, about 85 MB a wrestler) or **2K** (about 6 MB). Many ported wrestlers at 8K add up to gigabytes. |
@@ -167,10 +168,33 @@ Every SvR 2011 superstar mod stands on one of the game's own superstars (its *ba
 - **the moves, the taunts and the entrance motions**, and the starting stats;
 - for the **Divas**, the body too: the women's skeletons are smaller, and the model is shaped to it.
 
-**Height in game** then makes the wrestler taller or shorter than the base (the mod's `height=`).
+**Height** then sets how tall the wrestler really stands (the mod's `height=`). See [Height and weight](#height-and-weight).
 
 **Moveset** takes the moves and taunts of another superstar instead, while the body type keeps the size and the
 entrance (PortIT writes a `moves.txt` into the mod). You can still change single moves later in the Mod Maker.
+
+### Height and weight
+
+Type the height you want - **175 cm**, or **5 ft 9 in**. PortIT works the rest out for you.
+
+How it does it: SvR 2011 has no height of its own. Every superstar's record holds a body *scale*, and the game draws
+the wrestler at that scale - all of the game's skeletons are the same size underneath, so the scale is the only thing
+that makes Rey Mysterio short and Big Show tall. A mod takes that scale from its **body type**, and the mod's
+`height=` multiplies it. So after it builds the model, PortIT measures how tall the model really is (from the soles to
+the top of the head, with the hair left out) and works out the `height=` that lands on the height you asked for. The
+report then tells you what you got, for example `height in game: 175 cm (5'9")`.
+
+The game only allows `height=` between 0.80 and 1.25, so a body type can only reach so far. If the height you ask for
+is out of its reach, PortIT says so and tells you which way to go, for example:
+
+> body type 125 cannot reach 150 cm (4'11") - with this model it goes from 167 cm (5'6") to 260 cm (8'7").
+> It is 167 cm (5'6") instead: pick a shorter body type to get closer.
+
+**Weight is different: the game has no weight.** There is no weight anywhere in a superstar mod - the game never even
+shows one. All it has is a weight **class** (Diva, normal, heavyweight, super heavyweight), which decides things like
+who can lift whom, and a mod takes that class from its **body type** as well. So PortIT cannot write a weight. What it
+does instead is tell you which class your weight belongs in, and warn you when the body type you picked is in another
+one, so you can change it if the class matters to you.
 
 ### Entrance outfit and ring attire
 

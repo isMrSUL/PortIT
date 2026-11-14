@@ -11,6 +11,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using PortIT.Engine.Port;
 using PortIT.Core;
 
 namespace PortIT;
@@ -135,6 +136,7 @@ public partial class MainWindow : Window
         BudgetBox.SelectedIndex = int.TryParse(LoadSetting("budget"), out int b) ? b : DetectBudget(GameBox.Text);
         GameBox.LostFocus += (_, _) => BudgetBox.SelectedIndex = DetectBudget(GameBox.Text);
         OutBox.Text = LoadSetting("out") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PortIT");
+        SetUpSizes();
         SetSource(LoadSetting("source") == "aew");
 
         Src2K.Click += (_, _) => SetSource(false);
@@ -174,6 +176,7 @@ public partial class MainWindow : Window
         DiscordButton.Click += (_, _) => Community.Open(Community.Discord);
         Opened += async (_, _) =>
         {
+            FitToScreen();
             // (the Discord server: said once, on the first start after updating - the user's request 2026-11-13)
             if (!SkipAnnounce && LoadSetting("discord_told") == null)
             {
@@ -187,6 +190,26 @@ public partial class MainWindow : Window
 
     /// <summary>(screenshots: Render.Window) don't open the one-time Discord notice over the shot</summary>
     internal static bool SkipAnnounce;
+
+    /// <summary>never open bigger than the screen: on a 1366x768 laptop PortIT opened 1500x920, so the Port button sat
+    /// below the bottom edge and could not be reached (user report 2026-11-14)</summary>
+    void FitToScreen()
+    {
+        try
+        {
+            var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+            if (screen == null) return;
+            double scale = screen.Scaling <= 0 ? 1 : screen.Scaling;
+            double maxW = screen.WorkingArea.Width / scale, maxH = screen.WorkingArea.Height / scale;
+            if (Width > maxW) Width = Math.Max(MinWidth, maxW);
+            if (Height > maxH) Height = Math.Max(MinHeight, maxH);
+            // (centre it again: a window shrunk after CenterScreen sits off to one side)
+            Position = new Avalonia.PixelPoint(
+                screen.WorkingArea.X + (int)Math.Max(0, (screen.WorkingArea.Width - Width * scale) / 2),
+                screen.WorkingArea.Y + (int)Math.Max(0, (screen.WorkingArea.Height - Height * scale) / 2));
+        }
+        catch (Exception) { }
+    }
 
     /// <summary>(screenshots: Render.Window) pick the first listed wrestler whose name contains `name`</summary>
     internal void ShotPick(string name)
@@ -219,6 +242,98 @@ public partial class MainWindow : Window
         // (the body type follows: a woman on a man's style got a man's moves and body, and the other way round)
         bool styleFemale = StyleBox.SelectedItem is Style s && (s.Label.StartsWith("Diva") || FemaleBases.Contains(s.Base));
         if (styleFemale != female) StyleBox.SelectedIndex = female ? FemaleStyle : MaleStyle;
+        Hints();   // (the weight class depends on this: every diva is class 1)
+    }
+
+    // ---------------------------------------------------------------- height and weight in real units
+    //
+    // SvR 2011 keeps no height and no weight of its own. A superstar's record holds a body scale (4096 = 1.00,
+    // 1 game unit = 10 cm) and a weight CLASS, and a mod inherits both from its body type. height= in the
+    // manifest multiplies the scale, so a height in cm can be honoured exactly - the engine works the
+    // multiplier out after the build, when the model's real size is known (EngineNet/Port/Sizing.cs). A weight
+    // cannot be written at all; it is only checked against the body type's class. These boxes therefore take
+    // what a person knows - cm or feet and inches, kg or lbs - and the user request of 2026-11-14 was exactly
+    // that: the old 0.80 - 1.25 box was too hard to understand.
+
+    double heightCm = 180, weightKg = 100;
+    bool unitSync;                                        // (filling one box from the other must not loop back)
+    string? sizesFor; Dictionary<int, (int Scale, int WeightClass)>? sizes;
+
+    void SetUpSizes()
+    {
+        HeightUnitBox.ItemsSource = new[] { "cm", "feet + in" };
+        HeightUnitBox.SelectedIndex = LoadSetting("height_unit") == "ft" ? 1 : 0;
+        WeightUnitBox.ItemsSource = new[] { "kg", "lbs" };
+        WeightUnitBox.SelectedIndex = LoadSetting("weight_unit") == "lb" ? 1 : 0;
+        if (double.TryParse(LoadSetting("height_cm"), System.Globalization.CultureInfo.InvariantCulture, out double h) && h is >= 120 and <= 250) heightCm = h;
+        if (double.TryParse(LoadSetting("weight_kg"), System.Globalization.CultureInfo.InvariantCulture, out double w) && w is >= 30 and <= 300) weightKg = w;
+        ShowSizes();
+        HeightUnitBox.SelectionChanged += (_, _) => { SaveSetting("height_unit", HeightUnitBox.SelectedIndex == 1 ? "ft" : "cm"); ShowSizes(); };
+        WeightUnitBox.SelectionChanged += (_, _) => { SaveSetting("weight_unit", WeightUnitBox.SelectedIndex == 1 ? "lb" : "kg"); ShowSizes(); };
+        HeightCmBox.ValueChanged += (_, _) => ReadSizes();
+        HeightFtBox.ValueChanged += (_, _) => ReadSizes();
+        HeightInBox.ValueChanged += (_, _) => ReadSizes();
+        WeightBox.ValueChanged += (_, _) => ReadSizes();
+        StyleBox.SelectionChanged += (_, _) => Hints();
+    }
+
+    /// <summary>the boxes -&gt; heightCm / weightKg (what the user just typed)</summary>
+    void ReadSizes()
+    {
+        if (unitSync) return;
+        heightCm = HeightUnitBox.SelectedIndex == 1
+            ? Sizing.FeetInchesToCm((double)(HeightFtBox.Value ?? 5m), (double)(HeightInBox.Value ?? 0m))
+            : (double)(HeightCmBox.Value ?? 180m);
+        weightKg = WeightUnitBox.SelectedIndex == 1 ? Sizing.LbsToKg((double)(WeightBox.Value ?? 220m)) : (double)(WeightBox.Value ?? 100m);
+        SaveSetting("height_cm", heightCm.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+        SaveSetting("weight_kg", weightKg.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+        Hints();
+    }
+
+    /// <summary>heightCm / weightKg -&gt; the boxes, in whichever unit is chosen</summary>
+    void ShowSizes()
+    {
+        bool ft = HeightUnitBox.SelectedIndex == 1;
+        unitSync = true;
+        var (f, i) = Sizing.CmToFeetInches(heightCm);
+        HeightFtBox.Value = f;
+        HeightInBox.Value = i;
+        HeightCmBox.Value = (decimal)Math.Round(heightCm);
+        WeightBox.Value = (decimal)Math.Round(WeightUnitBox.SelectedIndex == 1 ? Sizing.KgToLbs(weightKg) : weightKg);
+        unitSync = false;
+        HeightCmBox.IsVisible = !ft;
+        HeightFtPanel.IsVisible = ft;
+        Hints();
+    }
+
+    /// <summary>The stock superstars' scales and weight classes out of the chosen game, read once per game folder.</summary>
+    Dictionary<int, (int Scale, int WeightClass)> Sizes()
+    {
+        string g = GameBox.Text?.Trim().Trim('"') ?? "";
+        if (sizes == null || sizesFor != g)
+        {
+            sizesFor = g;
+            try { sizes = Sizing.BaseSizes(g); } catch (Exception) { sizes = []; }
+        }
+        return sizes;
+    }
+
+    /// <summary>the small lines under the boxes: the same height the other way round, and what the game does with a weight</summary>
+    void Hints()
+    {
+        if (HeightHint == null || WeightHint == null) return;
+        var (f, i) = Sizing.CmToFeetInches(heightCm);
+        HeightHint.Text = HeightUnitBox.SelectedIndex == 1 ? $"= {Math.Round(heightCm):0} cm" : $"= {f}'{i}\"";
+        int baseId = (StyleBox.SelectedItem as Style)?.Base ?? 139;
+        bool female = FemaleChip.IsChecked == true;
+        int want = Sizing.WeightClassOf(weightKg, female);
+        string lbs = $"{Math.Round(Sizing.KgToLbs(weightKg)):0} lb";
+        string kg = $"{Math.Round(weightKg):0} kg";
+        string said = WeightUnitBox.SelectedIndex == 1 ? kg : lbs;
+        // the game has no weight number: say so once, here, instead of letting people think it was written
+        WeightHint.Text = Sizes().TryGetValue(baseId, out var b) && b.WeightClass != want
+            ? $"= {said} - {Sizing.ClassName(want)}, but this body type is {Sizing.ClassName(b.WeightClass)}"
+            : $"= {said} - {Sizing.ClassName(want)} class";
     }
 
     /// <summary>the move-set: the body type's own, or a stock superstar's (moves.txt over the base's; user request 2026-11-13)</summary>
@@ -436,7 +551,10 @@ public partial class MainWindow : Window
         req["out"] = outDir;
         req["female"] = FemaleChip.IsChecked == true;
         req["base"] = (StyleBox.SelectedItem as Style)?.Base ?? 139;
-        req["height"] = (double)(HeightBox.Value ?? 1.00m);
+        // real height and weight: the engine turns the height into the manifest's height= once it knows the
+        // model's own size, and checks the weight against the body type's class (the game stores no weight)
+        req["height_cm"] = heightCm;
+        req["weight_kg"] = weightKg;
         if (MovesBox.SelectedItem is MoveSet ms && ms.From > 0) req["moves_from"] = ms.From;
         req["budget"] = (BudgetBox.SelectedItem as Budget)?.Pages ?? 190;
         req["hd_size"] = (HdBox.SelectedItem as HdSize)?.Width ?? 4096;
@@ -472,6 +590,10 @@ public partial class MainWindow : Window
                 ReportText.Text += "\n\n" + tip;
                 Status($"Done: {lastMod}  ·  {tip}");
             }
+            // (a warning sits in the middle of a long report and people miss it - say it in the status line too)
+            if (r.GetProperty("report").EnumerateArray().Select(x => x.GetString() ?? "")
+                 .FirstOrDefault(l => l.StartsWith("warning:", StringComparison.OrdinalIgnoreCase)) is { } warn)
+                Status(warn);
         });
     }
 
