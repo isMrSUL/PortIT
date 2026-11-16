@@ -151,6 +151,7 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 | **Height** | how tall the wrestler stands in the game, in **cm** or in **feet and inches**. New in 1.3.3: before it this was a 1.05 = 5% taller number, which was hard to read. PortIT measures the model it just built and works the rest out. |
 | **Weight** | in **kg** or in **lbs**. SvR 2011 keeps no weight number at all - only a weight *class* - so PortIT checks your weight against the body type instead of writing it. See [Height and weight](#height-and-weight). |
 | **Moveset** | **Same as the body type**, or the moves and taunts of any superstar of the game. |
+| **Pose on the select screen** | how the wrestler stands on the select and VS screens: **The body type's**, or any superstar's pose. New in 1.3.4. |
 | **Model memory** | how much detail the model keeps. See below. |
 | **HD texture size** | (full detail only) how big the HD texture pack is: **4K** (the default, about 21 MB a wrestler), **8K** (sharpest, about 85 MB a wrestler) or **2K** (about 6 MB). Many ported wrestlers at 8K add up to gigabytes. |
 | **Face animation** | leave it **on**. The wrestler then talks, yells and sells with the game's own face animations. |
@@ -195,6 +196,21 @@ shows one. All it has is a weight **class** (Diva, normal, heavyweight, super he
 who can lift whom, and a mod takes that class from its **body type** as well. So PortIT cannot write a weight. What it
 does instead is tell you which class your weight belongs in, and warn you when the body type you picked is in another
 one, so you can change it if the class matters to you.
+
+### The select screen picture
+
+New in 1.3.4: every port now makes its own **select screen picture**, so the wrestler shows their own
+face in the roster instead of the body type's. PortIT renders the finished model on a see-through
+background and writes the three pictures the game wants, framed the way the game's own are:
+
+| file | |
+|---|---|
+| `render.dds` | 512 x 512, head to about mid-thigh |
+| `render_full.dds` | the same, for the full-body slot |
+| `render_small.dds` | 256 x 256, head to the waist |
+
+They sit next to `ch.pac` in the mod and install with it. The wrestler stands in the model's own rest
+pose, so the arms are out - the game's own pictures were posed by hand.
 
 ### Entrance outfit and ring attire
 
@@ -279,6 +295,20 @@ Close the game before installing.
 The wrestler becomes a new superstar in the game's roster. PortIT copies the mod into
 `<game>\Mods\Superstars\<mod id>`. If a mod with that id is already there, the old one is backed up first (in
 `<game>\Mods\_portit_backup`).
+
+### Over a superstar the game already has: Replace this superstar in the game…
+
+New in 1.3.4, and different from an attire: this puts the model over one of the game's **own**
+superstars, so they look new in **every** attire and every menu, while keeping their name, stats,
+moves and entrance. Use it to bring an old-looking superstar up to date.
+
+Pick the superstar in the window that opens. Any port can go on any superstar - PortIT renames the
+model's parts to that superstar's. Porting with the **body type** set to the same superstar is the
+exact fit for their size, and the window says so when they differ.
+
+This one changes the game's own file (`pac\ch\chNNN.pac`), so **close the game first**. PortIT copies
+the original into `Mods\_portit_backup` before it writes, so you can always put it back: copy the
+backup file over `pac\ch\chNNN.pac` again. Their other attires are left as the game had them.
 
 ### As a new look for a superstar the game has: Install as attire…
 

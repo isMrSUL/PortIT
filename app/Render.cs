@@ -158,6 +158,22 @@ internal static class Render
         return 0;
     }
 
+    /// <summary>a shot of the "Replace a superstar in the game" dialog (dev: --shot-replace)</summary>
+    public static int Replace(string outPath, string starsJson, int builtOn, string builtOnName)
+    {
+        AppBuilder.Configure<App>().UseSkia().WithInterFont()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(starsJson));
+        var stars = StarSlots.From(doc.RootElement);
+        var dlg = new ReplaceDialog(stars, builtOn, builtOnName) { Height = 430 };
+        dlg.Show();
+        Pump(1.5);
+        var frame = dlg.CaptureRenderedFrame();
+        if (frame == null) return 1;
+        frame.Save(outPath);
+        return 0;
+    }
+
     public static int Attire(string outPath, string starsJson, string star)
     {
         AppBuilder.Configure<App>().UseSkia().WithInterFont()

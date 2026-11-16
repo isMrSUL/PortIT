@@ -428,6 +428,13 @@ public sealed class RockFbx
                 }
                 if (SkipVariants && !UseVariants.Contains(name) && mats.Any(o => !name.Equals(o, StringComparison.OrdinalIgnoreCase) && name.ToLowerInvariant().StartsWith(o.ToLowerInvariant() + "_")))
                 { Report.Add($"{name,-18} left out (an alternate look)"); continue; }
+                // M_HoodUp / M_HoodDown: 2K keeps both states of a hood in the model and shows one at a time. Keeping
+                // both at once put the hood on the head AND on the shoulders together - a black mass round the head
+                // (user report: the PWM Iyo Sky NXT model, 2026-11-15). The hood down is the normal look, so the up
+                // one is left out unless the user ticks it in the mesh list.
+                if (SkipVariants && !UseVariants.Contains(name) && name.Length > 2 && name.EndsWith("Up", StringComparison.OrdinalIgnoreCase)
+                    && mats.Any(o => o.Equals(name[..^2] + "Down", StringComparison.OrdinalIgnoreCase)))
+                { Report.Add($"{name,-18} left out ({name[..^2]}Down is in the model too - tick this one to wear it up instead)"); continue; }
                 if (name.Length >= 2 && name[..2].ToLowerInvariant() == "s_" && matsLow.Contains("m_" + name[2..].ToLowerInvariant()))
                 { Report.Add($"{name,-18} left out (2K cloth-physics copy of M_{name[2..]})"); continue; }
                 var sp = model.StreamOf(k, "POSITION"); var sn = model.StreamOf(k, "NORMAL"); var su = model.Uvs(k);

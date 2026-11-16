@@ -196,6 +196,11 @@
                         ToolTip.Tip="The moves and taunts: the body type's own, or copied from one of the game's superstars.&#x0a;The body type still sets the size and the entrance. Change single moves later in the Mod Maker." />
             </StackPanel>
             <StackPanel Spacing="3">
+              <TextBlock Classes="label" Text="Pose on the select screen" />
+              <ComboBox x:Name="PoseBox" HorizontalAlignment="Stretch" MaxDropDownHeight="420"
+                        ToolTip.Tip="How the wrestler stands on the select and VS screens (the mod's pose=).&#x0a;The body type's own, or any superstar's pose." />
+            </StackPanel>
+            <StackPanel Spacing="3">
               <TextBlock Classes="label" Text="Model memory" />
               <ComboBox x:Name="BudgetBox" HorizontalAlignment="Stretch" />
             </StackPanel>
@@ -236,6 +241,9 @@
             </Grid>
             <Button x:Name="AttireButton" Content="Install as attire…" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False"
                     ToolTip.Tip="The port as an attire of a superstar the game has (a new attire, or replacing one) - Mods\Attires, like the Mod Maker's Attires page" />
+            <!-- replace a superstar the game already has, in the game's own pac file (not an attire mod) -->
+            <Button x:Name="ReplaceButton" Content="Replace this superstar in the game…" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False"
+                    ToolTip.Tip="Puts this model over the game's OWN superstar - the one picked as the body type above. They keep their name, stats, moves and entrance, and look new in every attire and every menu.&#x0a;This changes the game's own file (pac\ch\chNNN.pac). The original is backed up first, and PortIT can put it back." />
           </StackPanel>
           <Border Grid.Row="3" Classes="well" MinHeight="100" MaxHeight="240" Margin="0,10,0,0">
             <ScrollViewer>

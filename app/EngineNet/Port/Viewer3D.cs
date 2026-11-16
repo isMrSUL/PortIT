@@ -135,11 +135,13 @@ public static class Viewer3D
     /// <summary>(checks: the cut-out level - 90 as the preview; another to see what the game's would show)</summary>
     public static int AlphaRef = 90;
 
-    public static byte[] Draw(Scene s, int W, int H, Camera cam, bool smooth = true)
+    /// <summary>transparent: no background at all, so the picture can go over the game's select screen
+    /// (the Mod Maker asks for "a PNG with a see-through background") - user request 2026-11-16</summary>
+    public static byte[] Draw(Scene s, int W, int H, Camera cam, bool smooth = true, bool transparent = false)
     {
         var px = new byte[W * H * 4];
-        // background: a soft vertical fade (the app's dark panel colours)
-        for (int y = 0; y < H; y++)
+        // background: a soft vertical fade (the app's dark panel colours), or nothing when a cut-out is wanted
+        for (int y = 0; transparent ? false : y < H; y++)
         {
             double t = (double)y / Math.Max(H - 1, 1);
             byte r = (byte)(16 - 6 * t), g = (byte)(21 - 6 * t), b = (byte)(30 - 7 * t);
@@ -244,6 +246,7 @@ public static class Viewer3D
                             px[q] = (byte)Math.Clamp(bl * shd, 0, 255);
                             px[q + 1] = (byte)Math.Clamp(g * shd, 0, 255);
                             px[q + 2] = (byte)Math.Clamp(r * shd, 0, 255);
+                            px[q + 3] = 255;                     // (opaque where the model is: the cut-out's alpha)
                         }
                     }
                     if (cam.Wire)

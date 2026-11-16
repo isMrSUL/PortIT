@@ -53,6 +53,11 @@ Everything is explained step by step in the **[user guide](docs/USER_GUIDE.md)**
   entrance and stats; the Divas also give a woman's body), set the **height in cm or in feet and inches**, and take
   the moves and taunts of any superstar of the game. PortIT measures the model it built and works the game's own
   scaling out for you; it also tells you which weight class a weight belongs in (SvR 2011 keeps no weight number).
+- **Its own select screen picture** — every port renders the finished model and writes the game's three select
+  pictures, so the wrestler shows their own face in the roster instead of the body type's.
+- **Pose on the select screen** — how they stand on the select and VS screens: the body type's, or any superstar's.
+- **Replace a superstar in the game** — put the model over one of the game's own superstars, so they look new in
+  every attire and every menu while keeping their name, stats, moves and entrance. The original is backed up first.
 - **Faces that move** — a stock SvR head's face rig is fitted onto the new face, so the game's own face animations
   (talking, yelling, selling) work. Which skin is upper lip and which is lower comes from the source game's own data
   (2K's FACS jaw-open shape, AEW's lip and jaw bones), the mouth corners stay round, and AEW wrestlers keep their own

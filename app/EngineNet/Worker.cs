@@ -13,13 +13,14 @@ namespace PortIT.Engine;
 
 /// <summary>
 /// Engine/worker.py in C#: PortIT's engine commands, the same requests and answers (JSON objects), run inside PortIT.exe.
-///   list, inspect, source_preview, port, preview, export_svrmod, install, stars, install_attire, bigmodel.
+///   list, inspect, source_preview, port, preview, export_svrmod, install, stars, install_attire, bigmodel,
+///   replace_star, restore_star.
 /// The old "classic" converter route (portit/convert.py) is not here: the app never asks for it.
 /// Game files are only read; output goes to new folders (install copies into the game only when asked).
 /// </summary>
 public sealed class Worker
 {
-    public const string Version = "1.3.3";
+    public const string Version = "1.3.4";
     public const string CakPrefix = "cak:", PacPrefix = "pac:";
     readonly Action<string> log;
     readonly CancellationToken cancel;
@@ -52,6 +53,9 @@ public sealed class Worker
                 "install" => Install(req), "stars" => new JsonObject { ["stars"] = Attires.StarsJson(Str(req, "game")) },
                 "install_attire" => Attires.Install(req, (s, g, _) => CopyTexturePack(s, g, Path.GetFileName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(Str(req, "mod_dir")))))),
                 "bigmodel" => BigModel(req),
+                // replace a superstar the game already has, in its own pac\ch\chNNN.pac (not an attire mod)
+                "replace_star" => ReplaceStar.Run(req, (s, g, id) => CopyTexturePack(s, g, id), log),
+                "restore_star" => ReplaceStar.Restore(req, log),
                 _ => throw new ArgumentException($"unknown command {cmd}"),
             };
             res["ok"] = true;
@@ -337,13 +341,17 @@ public sealed class Worker
 
     static string Py31(string s) => s.Length > 31 ? s[..31] : s;
 
-    public static string Manifest(string modId, string name, string bas, bool female, string? pac = null, double height = 1.0, string? moves = null)
+    public static string Manifest(string modId, string name, string bas, bool female, string? pac = null, double height = 1.0, string? moves = null, long pose = 0)
     {
         var lines = new List<string> { "type=superstar", $"id={modId}", $"name={Py31(name)}", $"short={Py31(name)}", $"base={bas}", "author=", "version=1.0",
                                        $"made_with=PortIT {Version}", "ratings=80,80,80,80,80,80,80", "call=48" };
         // (the port's height=: the size against the base superstar's, 0.80 - 1.25; left out at 1.00 - Mod Maker manifest docs)
         if (moves != null) lines.Add("moves=" + moves);
         if (Math.Abs(height - 1.0) > 0.001) lines.Add("height=" + height.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+        // pose=: the superstar's pose on the select and VS screens (Mod Maker manifest docs). A pose motion id
+        // (32500-32505 generic men, 32510-32515 women, 32520-32591 the superstars' own) or, below 512, a superstar
+        // id to borrow that superstar's pose. Left out = the body type's own. (user request 2026-11-16)
+        if (pose > 0) lines.Add("pose=" + pose);
         if (pac != null)
         {
             string? need = null;
@@ -486,6 +494,7 @@ public sealed class Worker
             if (File.Exists(bp)) tmpl = bp;
             else log($"ch{baseId}.pac is not in the game's pac/ch folder - the body is posed to Big Show's (ch125)");
         }
+        long pose = req["pose"] is JsonNode pnode && pnode.GetValueKind() == JsonValueKind.Number ? (long)pnode.GetValue<double>() : 0;
         double height = req["height"] is JsonNode hnode && hnode.GetValueKind() == JsonValueKind.Number ? Math.Clamp(hnode.GetValue<double>(), 0.80, 1.25) : 1.0;
         log($"body type: stock superstar {baseId} (moves, entrance, size){(Math.Abs(height - 1) > 0.001 ? $", height x{height:F2}" : "")}");
         var res = p2.Build(Str(req, "id"), att, work, game, budget, template: tmpl, log: log, print: log,
@@ -619,7 +628,12 @@ public sealed class Worker
             }
             log($"weight: {wtxt} -> the game's {Sizing.ClassName(want)} class (it keeps no weight number, only the class, from the body type)");
         }
-        File.WriteAllText(Path.Combine(final, "manifest.txt"), Manifest(modId, name, baseId.ToString(), false, Path.Combine(final, "ch.pac"), height, movesFile).Replace("\n", "\r\n"), new UTF8Encoding(false));   // (Windows text mode, as the Python wrote it)
+        File.WriteAllText(Path.Combine(final, "manifest.txt"), Manifest(modId, name, baseId.ToString(), false, Path.Combine(final, "ch.pac"), height, movesFile, pose).Replace("\n", "\r\n"), new UTF8Encoding(false));   // (Windows text mode, as the Python wrote it)
+        // the select-screen pictures, from the model itself - without them the game shows the BASE superstar's
+        // face (user request 2026-11-16). A picture of the user's own can replace them later.
+        var renders = new JsonArray();
+        try { foreach (var f in SelectRender.FromModel(final, log)) renders.Add(f); }
+        catch (Exception e) { log($"select screen picture: not made ({e.Message}) - the game will show the body type's"); }
         var pv = Preview.Render(Path.Combine(final, "ch.pac"), Path.Combine(outDir, modId + "_preview.png"));
         var a0 = res.Rep["attires"]![0]!;
         var report = res.Report;
@@ -638,7 +652,7 @@ public sealed class Worker
         return new JsonObject
         {
             ["out"] = final, ["pac"] = Path.Combine(final, "ch.pac"), ["pages"] = a0["pages"]!.DeepClone(), ["report"] = new JsonArray(report.Select(x => (JsonNode)x).ToArray()),
-            ["preview"] = pv, ["checks"] = checks, ["texture_pack"] = new JsonArray(pack.Select(f => (JsonNode)Path.GetFileName(f)).ToArray()),
+            ["preview"] = pv, ["checks"] = checks, ["renders"] = renders, ["texture_pack"] = new JsonArray(pack.Select(f => (JsonNode)Path.GetFileName(f)).ToArray()),
             ["entrance_preview"] = epv, ["entrance_pages"] = entrancePages,
             ["svrmod"] = exp["svrmod"]!.DeepClone(), ["texture_zip"] = exp["texture_zip"]?.DeepClone(), ["share_zip"] = exp["share_zip"]?.DeepClone(),
         };

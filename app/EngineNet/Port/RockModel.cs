@@ -518,6 +518,23 @@ public sealed class RockModel
         Fbx.DropMeshes = [.. DropMeshes];
         var (meshes, bones) = Source != null ? Source(Fbx) : Fbx.Build(chr, attire, Path.Combine(outDir, "_fbx_tmp"));
         if (Prepare != null) meshes = Prepare(meshes, bones);
+        // A model with no head or no body is not a wrestler - a car, a bike, a prop, or a download that is only the
+        // clothes. PortIT fits the game's face rig onto M_Head and its skin onto M_Body, so it cannot go on. Said
+        // here, before the long work, instead of throwing "Sequence contains no matching element" deep inside the
+        // face rig (user report: an AE86 car mod, 2026-11-15).
+        {
+            var missing = new[] { "M_Head", "M_Body" }.Where(n => !meshes.Any(m => m.Name == n)).ToList();
+            if (missing.Count > 0)
+            {
+                var got = meshes.Select(m => m.Name).Where(n => !string.IsNullOrEmpty(n)).Distinct(StringComparer.Ordinal).Take(12).ToList();
+                throw new InvalidDataException(
+                    $"this model has no {string.Join(" and no ", missing)}, so it is not a wrestler PortIT can port. " +
+                    $"It needs the head and the body: the game's face animation is fitted onto M_Head and the skin onto M_Body. " +
+                    $"The meshes in this model are: {string.Join(", ", got)}{(meshes.Count > got.Count ? ", ..." : "")}. " +
+                    "A car, a bike or a prop cannot be a superstar, and a download that holds only the clothes needs its " +
+                    "BaseModel folder as well - ask whoever made it for the full model.");
+            }
+        }
         var C4 = T4(Turn);
         foreach (var b in bones) b.World = Blas.MatMul(C4, b.World, 4);
         foreach (var m in meshes) { m.Verts = Rows.TimesMatT(m.Verts, Turn); m.Normals = Rows.TimesMatT(m.Normals, Turn); }

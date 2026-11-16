@@ -132,6 +132,8 @@ public partial class MainWindow : Window
         StyleBox.SelectedIndex = MaleStyle;
         MovesBox.ItemsSource = MoveSets;
         MovesBox.SelectedIndex = 0;
+        PoseBox.ItemsSource = Poses;
+        PoseBox.SelectedIndex = 0;
         GameBox.Text = LoadSetting("game") ?? "";
         BudgetBox.SelectedIndex = int.TryParse(LoadSetting("budget"), out int b) ? b : DetectBudget(GameBox.Text);
         GameBox.LostFocus += (_, _) => BudgetBox.SelectedIndex = DetectBudget(GameBox.Text);
@@ -161,6 +163,7 @@ public partial class MainWindow : Window
         PreviewImage.PointerPressed += (_, _) => { if (View3DButton.IsEnabled && PreviewTitle.Text?.Contains("pages") == true) Open3D(); };
         InstallButton.Click += async (_, _) => await Install();
         AttireButton.Click += async (_, _) => await InstallAttire();
+        ReplaceButton.Click += async (_, _) => await ReplaceInGame();
         SourcePreviewButton.Click += async (_, _) => await SourcePreview();
         GameBrowse.Click += async (_, _) => { if (await PickFolder("Choose the SvR 2011 game folder") is string p) { GameBox.Text = p; SaveSetting("game", p); } };
         SourceBrowse.Click += async (_, _) => { if (await PickFolder(SrcAEW.IsChecked == true ? "Choose AEW's paks folder (…\\content\\paks)" : "Choose a 2K folder: a 2K26 install, a mods folder or one wrestler") is string p) { SourceBox.Text = p; } };
@@ -348,6 +351,21 @@ public partial class MainWindow : Window
         .. BodyStyles.Select(s => (s.Base, Name: s.Label.Contains('(') ? s.Label[(s.Label.LastIndexOf('(') + 1)..^1] : s.Label["Like ".Length..]))
                  .GroupBy(x => x.Base).Select(g => g.First()).OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
                  .Select(x => new MoveSet($"{x.Name}'s move-set", x.Base)),
+    ];
+
+    /// <summary>the select / VS screen pose: the body type's own, or a superstar's (the mod's pose=, a superstar id
+    /// below 512 - Mod Maker manifest docs). User request 2026-11-16.</summary>
+    public sealed record PoseChoice(string Label, int Id)
+    {
+        public override string ToString() => Label;
+    }
+
+    static readonly PoseChoice[] Poses =
+    [
+        new("The body type's", 0),
+        .. BodyStyles.Select(s => (s.Base, Name: s.Label.Contains('(') ? s.Label[(s.Label.LastIndexOf('(') + 1)..^1] : s.Label["Like ".Length..]))
+                 .GroupBy(x => x.Base).Select(g => g.First()).OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                 .Select(x => new PoseChoice($"{x.Name}'s pose", x.Base)),
     ];
 
     static readonly HashSet<int> FemaleBases = [297, 224, 294, 292, 293, 164, 291, 174, 182, 143, 290, 295, 296];
@@ -556,6 +574,7 @@ public partial class MainWindow : Window
         req["height_cm"] = heightCm;
         req["weight_kg"] = weightKg;
         if (MovesBox.SelectedItem is MoveSet ms && ms.From > 0) req["moves_from"] = ms.From;
+        if (PoseBox.SelectedItem is PoseChoice pc && pc.Id > 0) req["pose"] = pc.Id;
         req["budget"] = (BudgetBox.SelectedItem as Budget)?.Pages ?? 190;
         req["hd_size"] = (HdBox.SelectedItem as HdSize)?.Width ?? 4096;
         req["face"] = FaceCheck.IsChecked == true;
@@ -572,7 +591,7 @@ public partial class MainWindow : Window
             ReportText.Text = string.Join("\n", r.GetProperty("report").EnumerateArray().Select(x => "•  " + x.GetString()));
             Ported(r);
             lastPages = r.GetProperty("pages").GetInt32();
-            OpenButton.IsEnabled = InstallButton.IsEnabled = AttireButton.IsEnabled = View3DButton.IsEnabled = true;
+            OpenButton.IsEnabled = InstallButton.IsEnabled = AttireButton.IsEnabled = View3DButton.IsEnabled = ReplaceButton.IsEnabled = true;
             Status($"Done: {lastMod}");
             if (r.TryGetProperty("share_zip", out var sz) && sz.ValueKind == JsonValueKind.String)
             {
@@ -627,6 +646,44 @@ public partial class MainWindow : Window
                 else if (r.TryGetProperty("pack_enabled", out var pe) && !pe.GetBoolean())
                     msg += "  (turn on the texture pack \"PortIT HD\" in the launcher's Texture packs list)";
             }
+            Status(msg);
+        });
+    }
+
+    /// <summary>
+    /// Put the port over a superstar the game already has, in the game's OWN pac\ch\chNNN.pac - "update John Cena's
+    /// model". Not an attire mod: he looks new in every attire and every menu, and keeps his name, stats, moves and
+    /// entrance. The superstar is the body type the port was built on, because PortIT names a model's entries after
+    /// its base, which is what makes the swap possible. (user request 2026-11-16)
+    /// </summary>
+    async Task ReplaceInGame()
+    {
+        if (lastMod == null) return;
+        string game = GameBox.Text?.Trim().Trim('"') ?? "";
+        int builtOn = (StyleBox.SelectedItem as Style)?.Base ?? 139;
+        string builtOnName = (StyleBox.SelectedItem as Style)?.Label ?? ("superstar " + builtOn);
+        List<StarSlots>? stars = null;
+        await Work("Reading the game's superstars…", async ct =>
+            stars = StarSlots.From(await Core.Engine.Run(python, new() { ["command"] = "stars", ["game"] = game }, null, ct)));
+        if (stars == null || stars.Count == 0) { Status("No superstars found in the game folder above."); return; }
+
+        var chosen2 = await new ReplaceDialog(stars, builtOn, builtOnName).ShowDialog<StarSlots?>(this);
+        if (chosen2 == null) return;
+        int star = chosen2.Id;
+        string who = chosen2.Name;
+        if (!File.Exists(Path.Combine(game, "pac", "ch", $"ch{star}.pac")))
+        { Status($"ch{star}.pac is not in the game's pac\\ch folder - {who} has no model to replace."); return; }
+
+        await Work("Replacing…", async ct =>
+        {
+            var r = await Core.Engine.Run(python, new() { ["command"] = "replace_star", ["mod_dir"] = lastMod, ["game"] = game, ["star"] = star }, null, ct);
+            var swapped = r.GetProperty("replaced").EnumerateArray().Select(x => x.GetString()).ToList();
+            string msg = $"{who}: {swapped.Count} model(s) replaced in the game";
+            if (r.TryGetProperty("kept", out var kept) && kept.GetArrayLength() > 0)
+                msg += $", {kept.GetArrayLength()} of the game's own kept";
+            msg += "  ·  the original is in Mods\\_portit_backup";
+            if (r.TryGetProperty("pack", out var pk)) msg += "  ·  HD textures: " + pk.GetString();
+            foreach (var w in r.GetProperty("warnings").EnumerateArray()) msg += "\n" + w.GetString();
             Status(msg);
         });
     }
