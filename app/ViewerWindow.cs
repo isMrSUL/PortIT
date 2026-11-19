@@ -10,6 +10,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using PortIT.Engine.Port;
 
@@ -77,6 +78,10 @@ public sealed class ViewerWindow : Window
         bar.Children.Add(B("Top", "Look from above (key 7)", () => View(0, -Math.PI / 2 + 0.01)));
         bar.Children.Add(B("Head", "A close look at the face (key F)", Head));
         bar.Children.Add(B("Reset", "The whole body again (Home, or double-click)", () => View(0, 0)));
+        bar.Children.Add(new Border { Width = 12 });
+        // (share the exact angle you set up - a close-up of the face, a pose from below. 2026-11-19)
+        bar.Children.Add(B("Copy view", "Copy this exact view as a picture, twice as sharp as the screen (Ctrl+C) - paste it in Discord with Ctrl+V", () => _ = CopyView(false)));
+        bar.Children.Add(B("Save view…", "Save this exact view as a PNG picture", () => _ = CopyView(true)));
         bar.Children.Add(new Border { Width = 12 });
         foreach (var t in new[] { texBtn, lightBtn, wireBtn }) { t.Padding = new Thickness(10, 4); t.IsCheckedChanged += (_, _) => { Sync(); Redraw(); }; bar.Children.Add(t); }
         ToolTip.SetTip(texBtn, "Show the colours (T)"); ToolTip.SetTip(lightBtn, "Shade by the light, or flat colours (L)");
@@ -327,9 +332,66 @@ public sealed class ViewerWindow : Window
         e.Handled = true;
     }
 
+    /// <summary>this view as a PNG: drawn at twice the window's size and averaged down, so it is sharper and smoother
+    /// than the screen</summary>
+    byte[]? ViewPng()
+    {
+        if (scene == null) return null;
+        var (w, h) = PixelSize();
+        if (w < 2 || h < 2) return null;
+        const int SS = 2;
+        var dc = cam.Clone();
+        if (hairMode == 2) { dc.Yaw = 0; dc.Pitch = 0; }        // (the turn is in the model then, as on screen)
+        dc.PanX *= SS; dc.PanY *= SS;                           // (pan is in pixels of the picture drawn)
+        var big = Viewer3D.Draw(scene, w * SS, h * SS, dc, smooth: true);   // BGRA
+        var px = new byte[w * h * 4];
+        int bw = w * SS;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                int b = 0, g = 0, r = 0;
+                for (int dy = 0; dy < SS; dy++)
+                    for (int dx = 0; dx < SS; dx++)
+                    {
+                        int o = 4 * ((y * SS + dy) * bw + x * SS + dx);
+                        b += big[o]; g += big[o + 1]; r += big[o + 2];
+                    }
+                int at = 4 * (y * w + x), n = SS * SS;
+                px[at] = (byte)(r / n); px[at + 1] = (byte)(g / n); px[at + 2] = (byte)(b / n); px[at + 3] = 255;
+            }
+        var info = new SkiaSharp.SKImageInfo(w, h, SkiaSharp.SKColorType.Rgba8888, SkiaSharp.SKAlphaType.Unpremul);
+        using var bmp = new SkiaSharp.SKBitmap(info);
+        Marshal.Copy(px, 0, bmp.GetPixels(), px.Length);
+        using var img = SkiaSharp.SKImage.FromBitmap(bmp);
+        using var data = img.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
+    internal async Task CopyView(bool save)
+    {
+        var png = ViewPng();
+        if (png == null) { info.Text = "Nothing to copy yet."; return; }
+        if (!save)
+        {
+            info.Text = Core.ClipImage.SetPng(png) ? "View copied - paste it in Discord (or anywhere) with Ctrl+V."
+                                                    : "Could not reach the clipboard - try again, or use Save view….";
+            return;
+        }
+        var file = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+        {
+            Title = "Save this view", SuggestedFileName = "PortIT view.png", DefaultExtension = "png",
+            FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("PNG picture") { Patterns = new[] { "*.png" } } },
+        });
+        string? path = file?.TryGetLocalPath();
+        if (path == null) return;
+        File.WriteAllBytes(path, png);
+        info.Text = "Saved " + Path.GetFileName(path);
+    }
+
     void OnKey(object? sender, KeyEventArgs e)
     {
         bool ctrl = (e.KeyModifiers & KeyModifiers.Control) != 0;
+        if (ctrl && e.Key == Key.C) { _ = CopyView(false); e.Handled = true; return; }
         switch (e.Key)
         {
             case Key.D1 or Key.NumPad1: View(ctrl ? Math.PI : 0, 0); break;

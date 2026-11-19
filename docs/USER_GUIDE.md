@@ -122,7 +122,7 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 |---|---|
 | **SvR game** (top) | your SvR 2011 game folder (the one with `pac\ch`). **Browse…** sits at the end of the box. At the top right: **Big-model DLL…** installs or checks the [big-model DLL](#the-big-model-dll-for-full-detail), **Suggest an idea…**, **Report a problem…** and **Discord**. |
 | **1 · Wrestler** (left) | where the wrestlers come from: **WWE 2K19 - 2K26** or **AEW Fight Forever**, its folder (**…**), **Load**, a search box, one wrestler's model folder (**Model folder…**) and the list of wrestlers. |
-| **Preview** (middle) | the wrestler from the **front, the side and the back**, as he looks in the source game. It follows your choices by itself - untick a piece or pick another entrance outfit and it draws again in a moment. Click it, or **3D view**, to turn him in 3D - before porting too. After porting it shows the built SvR model. With an [entrance outfit](#entrance-outfit-and-ring-attire), **Ring attire** / **Entrance outfit** at its top right switch between the two. |
+| **Preview** (middle) | the wrestler from the **front, the side and the back**, as he looks in the source game. It follows your choices by itself - untick a piece or pick another entrance outfit and it draws again in a moment. Click it, or **3D view**, to turn him in 3D - before porting too. After porting it shows the built SvR model. With an [entrance outfit](#entrance-outfit-and-ring-attire), **Ring attire** / **Entrance outfit** at its top right switch between the two. **Copy picture** / **Save picture…** make a clean picture for sharing (see [Share a picture](#share-a-picture)). |
 | **Meshes** tab (under the picture) | every part of the model (body, head, eyes, hair, each piece of clothing), in plain words (*Left knee pad*) with the 2K name under it (`M_L_Kneepad`). Untick a piece to leave it out. **Click a row** (or **Show**) to light that piece up in orange, so you can see which one it is. A row with no tick box says why under its name - the eyes, the body, or a copy the game does not use. |
 | **Port report** tab | what the last port did and checked (see [The report](#the-report)). |
 | **2 · Settings** (right) | the choices for the port, in groups you can fold away. *How it looks in game* and *Detail and texture size* start closed: their defaults are good. Under them: **Port to SvR 2011**, **Port every attire**, **Share this wrestler…** and the install buttons. |
@@ -275,6 +275,17 @@ button (key **B**) switches between the two, so you can see what the port change
 - Keys as in Blender: **1** front, **3** side, **Ctrl+1** back, **7** top, **F** a close look at the face,
   **W** wireframe, **T** textures, **L** lights.
 - **Entrance outfit** shows the other outfit, when the port has one.
+
+### Share a picture
+
+People love to post their ports, so PortIT makes a picture for that:
+
+- **Copy picture** (under the preview) makes a clean, big picture of the wrestler - front, side and back, smooth
+  edges, the name on top - and puts it on the clipboard. In Discord, click the message box and press **Ctrl+V**.
+  After a port it shows the built model with its HD textures; before porting, the 2K / AEW model as you have ticked it.
+- **Save picture…** saves the same picture as a PNG file.
+- In the **3D view**, turn the model to the angle you like and press **Copy view** (or **Ctrl+C**) to copy exactly
+  that view, twice as sharp as the screen. **Save view…** saves it as a PNG.
 
 ### Moving hair (test)
 

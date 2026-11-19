@@ -429,6 +429,10 @@ public sealed class RockModel
     public string? FindTex(string chr, string attire, string bas, string suffix)
     {
         if (TexOverride.TryGetValue(bas + suffix, out var over) && File.Exists(over)) return over;
+        // (attire can arrive as the attire FILE - "951_Default_Attire\951_Attire.mcd" - and then <chr>\<file>\Textures
+        //  does not exist. A model with its own material files never noticed: its maps come through Fbx.TexAlias. Kane
+        //  2008's mod has no Materials folder, so every piece of his gear came out a flat grey, 2026-11-19.)
+        if (File.Exists(Path.Combine(chr, attire))) attire = Path.GetDirectoryName(attire) ?? attire;
         string? Search(string stem)
         {
             foreach (var folder in TexFirst.Concat([Path.Combine(chr, attire, "Textures"), Path.Combine(chr, "BaseModel", "Textures")]))

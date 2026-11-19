@@ -2122,6 +2122,28 @@ switch (args[0])
         ok++;
         break;
     }
+    case "cliptest":
+    {
+        // (args: a .png) - put it on the clipboard with ClipImage, as Copy picture does; it checks itself
+        var bytes = File.ReadAllBytes(args[1]);
+        Console.WriteLine("on the clipboard and checked: " + PortIT.Core.ClipImage.SetPng(bytes));
+        ok++;
+        break;
+    }
+    case "share":
+    {
+        // (args: a wrestler folder OR a built ch.pac, out.png, [title], [subtitle]) - the share picture (Copy picture)
+        PortIT.Engine.Port.Viewer3D.Scene sh;
+        if (args[1].EndsWith(".pac", StringComparison.OrdinalIgnoreCase))
+            sh = PortIT.Engine.Port.Viewer3D.Load(args[1], 0, PortIT.Engine.Port.Viewer3D.HdColor(Path.GetDirectoryName(args[1])!, false));
+        else
+            sh = PortIT.Engine.Port.SourceScene.Build(PortIT.Engine.Readers.Source2k.Load(args[1], null));
+        var tS = System.Diagnostics.Stopwatch.StartNew();
+        var png = PortIT.Engine.Port.Preview.ShareScene(sh, args[2], args.Length > 3 ? args[3] : null, args.Length > 4 ? args[4] : null);
+        Console.WriteLine($"{args[2]}: {png.Length / 1024} KB in {tS.ElapsedMilliseconds} ms");
+        ok++;
+        break;
+    }
     case "updatetest":
     {
         // (args: an installed copy's folder, a feed .json, current version) - the self-update run for real against a

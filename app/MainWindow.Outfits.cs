@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.Platform.Storage;
 using PortIT.Core;
 
 namespace PortIT;
@@ -181,6 +182,7 @@ public partial class MainWindow
             Status($"{w.Name}: {ring.Meshes.Count} meshes.");
             SourcePreviewButton.IsEnabled = true;
             View3DButton.IsEnabled = true;           // (the 2K model can be turned in 3D before porting, 2026-11-18)
+            CopyPicButton.IsEnabled = SavePicButton.IsEnabled = true;
             if (HasEntrance) await PrepareEntrance(ct);
             SyncOutfitUi();
             ShowCurrent();
@@ -268,6 +270,72 @@ public partial class MainWindow
     string SceneKey(Outfit o) => Source + "|" + (chosen?.Id ?? "") + "|" + (o == entrance && o.Attire != null ? o.Attire : AttireBox.SelectedItem as string ?? "");
 
     public void ForgetScene() { scene = null; sceneKey = null; }
+
+    /// <summary>the model the share picture is drawn from: the built port when this outfit has been ported (with its HD
+    /// textures), else the 2K model with the pieces as they are ticked now</summary>
+    async Task<PortIT.Engine.Port.Viewer3D.Scene?> ShareSceneFor(Outfit o, CancellationToken ct)
+    {
+        bool ent = o == entrance;
+        string? pac = lastMod != null ? System.IO.Path.Combine(lastMod, "ch.pac") : null;
+        if (o.BuiltPic != null && pac != null && System.IO.File.Exists(pac))
+        {
+            string mod = lastMod!;
+            return await Task.Run(() => PortIT.Engine.Port.Viewer3D.Load(pac, ent ? 1 : 0, PortIT.Engine.Port.Viewer3D.HdColor(mod, ent)), ct);
+        }
+        string key = SceneKey(o);
+        if (scene == null || sceneKey != key)
+        {
+            var req = Request("source_preview");
+            if (ent && o.Attire != null) req["attire"] = o.Attire;
+            req["leave_out"] = Array.Empty<string>();
+            req["use"] = o.Meshes.Where(m => m.Base != null).Select(m => m.Name).Distinct().ToArray();
+            scene = await Core.Engine.SourceScene(req, ct);
+            sceneKey = key;
+        }
+        var hide = LeaveOut(o).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in scene.Parts) { p.Hidden = hide.Contains(p.Name); p.Highlight = false; }
+        PortIT.Engine.Port.SourceScene.Measure(scene);
+        return scene;
+    }
+
+    /// <summary>"Copy picture" / "Save picture…": a clean picture made for sharing (people post their ports in
+    /// Discord - the user's request 2026-11-19). Front, side and back, the name on top, no debug caption.</summary>
+    async Task SharePicture(bool save)
+    {
+        if (chosen == null) { Status("Pick a wrestler first."); return; }
+        var w = chosen;
+        var o = Current;
+        bool ported = o.BuiltPic != null;
+        string title = (ModNameBox.Text ?? "").Trim();
+        if (title.Length == 0) title = w.Name;
+        string sub = ported ? (o == entrance ? "entrance outfit  ·  " : "") + "ported to SvR 2011" : OutfitName + "  ·  before porting";
+        byte[]? png = null;
+        await Work("Making the picture…", async ct =>
+        {
+            var s = await ShareSceneFor(o, ct);
+            if (s == null) return;
+            png = await Task.Run(() => PortIT.Engine.Port.Preview.ShareScene(s, null, title, sub), ct);
+        });
+        if (png == null) return;
+        if (!save)
+        {
+            Status(Core.ClipImage.SetPng(png)
+                ? "Picture copied - paste it in Discord (or anywhere) with Ctrl+V."
+                : "Could not reach the clipboard (another program has it) - try again, or use Save picture….");
+            return;
+        }
+        var file = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+        {
+            Title = "Save the picture",
+            SuggestedFileName = System.Text.RegularExpressions.Regex.Replace(title, "[^A-Za-z0-9 _-]+", "").Trim() + (ported ? "" : " - before porting") + ".png",
+            DefaultExtension = "png",
+            FileTypeChoices = new[] { new Avalonia.Platform.Storage.FilePickerFileType("PNG picture") { Patterns = new[] { "*.png" } } },
+        });
+        string? path = file?.TryGetLocalPath();
+        if (path == null) return;
+        System.IO.File.WriteAllBytes(path, png);
+        Status("Saved " + System.IO.Path.GetFileName(path));
+    }
 
     /// <summary>Read the model in the background as soon as a wrestler is chosen, so the FIRST tick or outfit change is
     /// as quick as the ones after it. Nothing on screen changes; if it fails, the next draw simply reads it then.</summary>

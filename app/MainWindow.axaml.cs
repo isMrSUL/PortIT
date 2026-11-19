@@ -174,6 +174,12 @@ public partial class MainWindow : Window
                     }
                     File.WriteAllText(shotEnt + ".info.txt",
                         (chosen?.Name ?? "?") + ": the picture " + (changed ? "redrew by itself after " + sw.ElapsedMilliseconds + " ms" : "DID NOT redraw"));
+                    // (tests: PORTIT_SHOT_COPY=1 presses Copy picture too, and notes what the status line said)
+                    if (Environment.GetEnvironmentVariable("PORTIT_SHOT_COPY") == "1")
+                    {
+                        await SharePicture(false);
+                        File.AppendAllText(shotEnt + ".info.txt", Environment.NewLine + "copy picture: " + StatusText.Text);
+                    }
                 }
                 catch (Exception e) { File.WriteAllText(shotEnt + ".error.txt", e.ToString()); }
                 Close();
@@ -203,6 +209,11 @@ public partial class MainWindow : Window
                         rtb.Save(fs);
                     }
                     File.WriteAllText(shot3d + ".info.txt", "wrestler: " + (chosen?.Name ?? "?"));
+                    if (Environment.GetEnvironmentVariable("PORTIT_SHOT_COPY") == "1")
+                    {
+                        await vw.CopyView(false);
+                        File.AppendAllText(shot3d + ".info.txt", Environment.NewLine + "copy view: done");
+                    }
                 }
                 catch (Exception e) { File.WriteAllText(shot3d + ".error.txt", e.ToString()); }
                 Close();
@@ -273,6 +284,8 @@ public partial class MainWindow : Window
         // The 3D view works BEFORE porting too (2026-11-18): with no port yet it opens the 2K / mod model itself, and
         // once a port exists the window's "2K model" button switches between the two.
         View3DButton.Click += (_, _) => Open3D();
+        CopyPicButton.Click += async (_, _) => await SharePicture(false);
+        SavePicButton.Click += async (_, _) => await SharePicture(true);
         // (people click the picture to turn it: a click on the picture opens the 3D view)
         PreviewImage.PointerPressed += (_, _) => { if (View3DButton.IsEnabled) Open3D(); };
         InstallButton.Click += async (_, _) => await Install();

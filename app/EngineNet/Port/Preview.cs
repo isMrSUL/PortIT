@@ -303,4 +303,97 @@ public static class Preview
         Save(img, W, H, title, outPath);
         return outPath;
     }
+
+    /// <summary>
+    /// A picture made for SHARING a port (the user's request 2026-11-19: "people love to share their ported mods that
+    /// way"). Front, side and back, each 600 x 1000, drawn at twice the size and averaged down; the model is drawn on
+    /// nothing and laid over the background, so its edges blend into it instead of into a box. The name at the top,
+    /// big. No debug caption. <paramref name="tag"/> (optional) is a small line at the bottom right.
+    /// Returns the PNG bytes, and writes them to <paramref name="outPath"/> when given.
+    /// </summary>
+    public static byte[] ShareScene(Viewer3D.Scene scene, string? outPath, string? title, string? subtitle = null, string? tag = null)
+    {
+        const int PH = 1000, SS = 2, Top = 96;
+        const double Zoom = 0.95;
+        var views = new (double Yaw, double Pitch)[] { (0, 0), (-Math.PI / 2, 0), (Math.PI, 0) };
+        // each panel as wide as the model is from that side: a T-pose is about as wide as the wrestler is tall, so a
+        // fixed width cut the hands off (2026-11-19). Same scale in all three, so they stand the same height.
+        double perUnit = PH * 0.92 / Math.Max(scene.Height, 1e-6) * Zoom;
+        double across = scene.Hi[0] - scene.Lo[0], deep = scene.Hi[2] - scene.Lo[2];
+        int Fit(double extent) => Math.Max(360, (int)Math.Ceiling(extent * perUnit * 1.04) + 60);
+        int[] PWs = [Fit(across), Fit(deep), Fit(across)];
+        int[] X0 = [0, PWs[0], PWs[0] + PWs[1]];
+        int W = PWs.Sum(), H = PH + Top;
+        var px = new byte[W * H * 4];                       // RGBA
+        double[] Bg(int y)
+        {
+            double t = (double)y / Math.Max(H - 1, 1);       // (the app's own dark panel, a little lighter at the top)
+            return [19 - 8 * t, 24 - 8 * t, 34 - 10 * t];
+        }
+        for (int y = 0; y < H; y++)
+        {
+            var c = Bg(y);
+            for (int x = 0; x < W; x++)
+            {
+                int o = 4 * (y * W + x);
+                px[o] = (byte)c[0]; px[o + 1] = (byte)c[1]; px[o + 2] = (byte)c[2]; px[o + 3] = 255;
+            }
+        }
+        for (int v = 0; v < views.Length; v++)
+        {
+            int PW = PWs[v];
+            var cam = new Viewer3D.Camera { Yaw = views[v].Yaw, Pitch = views[v].Pitch, Zoom = Zoom };
+            var big = Viewer3D.Draw(scene, PW * SS, PH * SS, cam, smooth: true, transparent: true);   // BGRA, alpha 0 = nothing
+            int bw = PW * SS;
+            for (int y = 0; y < PH; y++)
+            {
+                var bg = Bg(Top + y);
+                for (int x = 0; x < PW; x++)
+                {
+                    double r = 0, g = 0, b = 0, a = 0;
+                    for (int dy = 0; dy < SS; dy++)
+                        for (int dx = 0; dx < SS; dx++)
+                        {
+                            int o = 4 * ((y * SS + dy) * bw + x * SS + dx);
+                            double al = big[o + 3] / 255.0;
+                            b += big[o] * al; g += big[o + 1] * al; r += big[o + 2] * al; a += al;
+                        }
+                    if (a <= 0) continue;
+                    double cover = a / (SS * SS);
+                    int at = 4 * ((Top + y) * W + X0[v] + x);
+                    px[at] = (byte)Math.Clamp(r / a * cover + bg[0] * (1 - cover), 0, 255);
+                    px[at + 1] = (byte)Math.Clamp(g / a * cover + bg[1] * (1 - cover), 0, 255);
+                    px[at + 2] = (byte)Math.Clamp(b / a * cover + bg[2] * (1 - cover), 0, 255);
+                }
+            }
+        }
+
+        var info = new SKImageInfo(W, H, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+        using var bmp = new SKBitmap(info);
+        System.Runtime.InteropServices.Marshal.Copy(px, 0, bmp.GetPixels(), px.Length);
+        using (var canvas = new SKCanvas(bmp))
+        {
+            void Text(string s, float size, SKColor color, bool bold, float y, SKTextAlign align = SKTextAlign.Center, float? x = null)
+            {
+                using var paint = new SKPaint
+                {
+                    Color = color, IsAntialias = true, TextSize = size, TextAlign = align,
+                    Typeface = SKTypeface.FromFamilyName(null, bold ? SKFontStyle.Bold : SKFontStyle.Normal),
+                };
+                canvas.DrawText(s, x ?? W / 2f, y, paint);
+            }
+            if (!string.IsNullOrWhiteSpace(title)) Text(title.Trim(), 44, new SKColor(236, 240, 247), true, 56);
+            if (!string.IsNullOrWhiteSpace(subtitle)) Text(subtitle.Trim(), 20, new SKColor(140, 152, 172), false, 84);
+            if (!string.IsNullOrWhiteSpace(tag)) Text(tag.Trim(), 16, new SKColor(100, 112, 132), false, H - 16, SKTextAlign.Right, W - 20);
+        }
+        using var image = SKImage.FromBitmap(bmp);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        var bytes = data.ToArray();
+        if (outPath != null)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
+            File.WriteAllBytes(outPath, bytes);
+        }
+        return bytes;
+    }
 }

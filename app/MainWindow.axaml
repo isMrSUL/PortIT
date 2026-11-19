@@ -103,9 +103,16 @@
               <TextBlock x:Name="PreviewTitle" FontWeight="SemiBold" Foreground="{StaticResource AccentHi}" />
             </StackPanel>
             <!-- the model in 3D, turned with the mouse like Blender (2026-11-12); the 2K model as well as the port (2026-11-18) -->
-            <Button x:Name="View3DButton" Content="3D view" IsEnabled="False" Margin="16,12" Padding="16,7"
-                    HorizontalAlignment="Right" VerticalAlignment="Bottom" Classes="accent"
+            <!-- share it: a clean, bigger picture made for posting (2026-11-19) -->
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="16,12" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+            <Button x:Name="CopyPicButton" Content="Copy picture" IsEnabled="False" Padding="14,7"
+                    ToolTip.Tip="Copy a clean picture of this wrestler - front, side and back, with the name - to paste anywhere.&#x0a;In Discord: click the message box and press Ctrl+V." />
+            <Button x:Name="SavePicButton" Content="Save picture…" IsEnabled="False" Padding="14,7"
+                    ToolTip.Tip="Save that picture as a PNG file" />
+            <Button x:Name="View3DButton" Content="3D view" IsEnabled="False" Padding="16,7"
+                    Classes="accent"
                     ToolTip.Tip="Turn the model with the mouse, zoom in close, see it from any side (like Blender).&#x0a;It works before porting too: it opens the 2K / mod model, and once you have ported, the window&apos;s &quot;2K model&quot; button switches between the two." />
+            </StackPanel>
             <!-- the two outfits: what he wears in the ring, what he walks out in (each with its own meshes and picture) -->
             <StackPanel x:Name="OutfitBar" Margin="16,12" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal" Spacing="6" IsVisible="False">
               <ToggleButton x:Name="OutfitRing" Content="Ring attire" IsChecked="True" Classes="chip"
