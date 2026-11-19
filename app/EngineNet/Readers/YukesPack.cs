@@ -124,6 +124,54 @@ public static class YukesPack
     static uint U32le(byte[] b, int o) => BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(o));
 
     /// <summary>the texture table member -&gt; {name: dds bytes}, or null if the blob is not one</summary>
+    /// <summary>
+    /// The pictures of a pack that keeps each .dds as a member of its own, named by its /YCTM/ table.
+    ///
+    /// Two ways a 2K19 - 2K22 pack can hold its pictures. TexturesOf below reads the one PortIT knew: a
+    /// single member with a little name table and every .dds packed inside it. A txNNNNN.pac does it the
+    /// other way - one compressed member per .dds, with no name on any of them, and a table member that
+    /// names them in order:
+    ///
+    ///   offset 8        "/YCTM/"
+    ///   0x188 + 0x190*k one record per picture; its file name sits at +0x90, NUL-ended ("all_color.dds")
+    ///                   and the last record's name is empty or starts with '/' (the end mark)
+    ///
+    /// The k-th name belongs to the k-th member that begins "DDS ". Without this, every single picture of
+    /// such a pack was lost: Sting 2K19 (ch51304.pac + tx51302/4.pac) came out with 19 of 19 pieces bare.
+    /// That is the "my 2K19 textures disappear when I port him" people report (measured 2026-11-17).
+    ///
+    /// The names and the .dds files are only paired when there are exactly as many of one as the other.
+    /// A picture on the wrong piece would be worse than a piece with no picture.
+    /// </summary>
+    public static Dictionary<string, byte[]> TexturesByTable(List<byte[]> blobs)
+    {
+        var o = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        var dds = blobs.Where(b => b.Length >= 4 && b.AsSpan(0, 4).SequenceEqual("DDS "u8)).ToList();
+        if (dds.Count == 0) return o;
+        foreach (var t in blobs)
+        {
+            if (t.Length < 0x188 + 0x190 || !t.AsSpan(8, 6).SequenceEqual("/YCTM/"u8)) continue;
+            var names = new List<string>();
+            for (int k = 0; ; k++)
+            {
+                int r = 0x188 + k * 0x190;
+                if (r + 0x190 > t.Length) break;
+                string nm = Ascii(t.AsSpan(r + 0x90, 64));
+                if (nm.Length == 0 || nm[0] == '/') break;
+                names.Add(nm);
+            }
+            if (names.Count != dds.Count) continue;
+            for (int k = 0; k < names.Count; k++)
+            {
+                string key = names[k];
+                if (key.EndsWith(".dds", StringComparison.OrdinalIgnoreCase)) key = key[..^4];
+                o[key.ToLowerInvariant()] = dds[k];
+            }
+            return o;
+        }
+        return o;
+    }
+
     public static Dictionary<string, byte[]>? TexturesOf(byte[] blob)
     {
         if (blob.Length < 48 || !blob.AsSpan(32, 4).SequenceEqual("dds\0"u8)) return null;
@@ -548,14 +596,35 @@ public static class YukesPack
     // ---------------------------------------------------------------- a pack -> a 2K-style wrestler folder (cached)
     public static bool IsCharacterPack(string name) => !Regex.IsMatch(System.IO.Path.GetFileName(name), @"^tx\d", RegexOptions.IgnoreCase);
 
+    /// <summary>
+    /// The texture packs that belong to chNNNNN.pac, the ones to fall back on FIRST and its own LAST.
+    ///
+    /// A 2K19 - 2K22 pack can keep its pictures in a txNNNNN.pac beside it. The last two digits of the
+    /// number are the attire (02 is the one the wrestler wears by default, 04 the second, and so on), and
+    /// a second attire's tx pack holds only the pictures that CHANGED: the body, the head, the hair and
+    /// the eyes stay in the default attire's pack. So reading tx67604.pac alone left Sting's second
+    /// attire with 13 of its 15 pieces bare - body, head, hair, jacket, tights, shoes and eyes all
+    /// untextured. That is the "my 2K19 textures disappear" people report (measured 2026-11-17).
+    ///
+    /// So the same wrestler's other tx packs come too, and the wrestler's OWN pack is last in the list
+    /// because the caller lets a later pack win: a picture the attire does change is its own.
+    /// </summary>
     public static List<string> TexturePacks(string pac)
     {
         var m = Regex.Match(System.IO.Path.GetFileName(pac), @"^ch(\d+)", RegexOptions.IgnoreCase);
         if (!m.Success) return [];
+        string num = m.Groups[1].Value;
         var d = System.IO.Path.GetDirectoryName(pac)!;
-        return Directory.EnumerateFiles(d).Select(System.IO.Path.GetFileName).OfType<string>()
-            .Where(f => Regex.IsMatch(f, $@"^tx{m.Groups[1].Value}(\D|$)", RegexOptions.IgnoreCase) && f.EndsWith(".pac", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(f => f, StringComparer.Ordinal).Select(f => System.IO.Path.Combine(d, f)).ToList();
+        // the same wrestler: the number without its last two digits (the attire)
+        // only when the number really is <wrestler><attire>: ch123.pac would otherwise drag in tx100 - tx199
+        string who = num.Length >= 4 ? num[..^2] : "";
+        var here = Directory.EnumerateFiles(d, "*.pac").Select(System.IO.Path.GetFileName).OfType<string>().ToList();
+        bool Mine(string f, string n) => Regex.IsMatch(f, $@"^tx{n}(\D|$)", RegexOptions.IgnoreCase);
+        var mine = here.Where(f => Mine(f, num)).OrderBy(f => f, StringComparer.Ordinal).ToList();
+        var others = who.Length == 0 ? [] : here.Where(f => !Mine(f, num) && Regex.IsMatch(f, $@"^tx{who}\d\d(\D|$)", RegexOptions.IgnoreCase))
+                         // the default attire (02) first: it is the one the rest borrow from
+                         .OrderBy(f => f, StringComparer.Ordinal).ToList();
+        return others.Concat(mine).Select(f => System.IO.Path.Combine(d, f)).ToList();
     }
 
     /// <summary>the cache key: sha1 of "abs path (lower) | size | mtime (whole seconds)" -&gt; 12 hex digits, as jboy_2k._key
@@ -573,7 +642,7 @@ public static class YukesPack
         try
         {
             var root = System.IO.Path.Combine(CacheRoot, Key(pac));
-            if (!File.Exists(System.IO.Path.Combine(root, ".done2"))) return null;
+            if (!File.Exists(System.IO.Path.Combine(root, ".done3"))) return null;
             return Directory.EnumerateDirectories(root).FirstOrDefault();
         }
         catch (IOException) { return null; }
@@ -586,17 +655,24 @@ public static class YukesPack
         string key = Key(pac);
         name = Regex.Replace(name ?? System.IO.Path.GetFileNameWithoutExtension(pac), @"[^A-Za-z0-9_ .()-]+", "_").Trim();
         if (name.Length == 0) name = "wrestler";
-        string root = System.IO.Path.Combine(cacheRoot ?? CacheRoot, key), chr = System.IO.Path.Combine(root, name), done = System.IO.Path.Combine(root, ".done2");
+        string root = System.IO.Path.Combine(cacheRoot ?? CacheRoot, key), chr = System.IO.Path.Combine(root, name), done = System.IO.Path.Combine(root, ".done3");
         if (File.Exists(done) && Directory.Exists(chr)) return chr;
         log($"unpacking {System.IO.Path.GetFileName(pac)} (WWE 2K19 - 2K22 pack)...");
         var blobs = Members(pac);
+        // (a pack whose .dds files are members of their own: paired with its own table, pack by pack, so
+        //  one pack's names can never land on another pack's pictures)
+        var byTable = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        foreach (var kv in TexturesByTable(blobs)) byTable[kv.Key] = kv.Value;
         foreach (var tx in TexturePacks(pac))       // (2K19 / 2K20: the textures can sit in txNNNN.pac)
         {
             log($"  + textures from {System.IO.Path.GetFileName(tx)}");
-            blobs.AddRange(Members(tx));
+            var txb = Members(tx);
+            blobs.AddRange(txb);
+            foreach (var kv in TexturesByTable(txb)) byTable[kv.Key] = kv.Value;
         }
         var models = blobs.Where(b => b.Length >= 4 && (b.AsSpan(0, 4).SequenceEqual("JBOY"u8) || b.AsSpan(0, 4).SequenceEqual("YOBJ"u8))).ToList();
         var tex = new Dictionary<string, byte[]>();
+        foreach (var kv in byTable) tex[kv.Key] = kv.Value;
         foreach (var b in blobs) if (TexturesOf(b) is { } t) foreach (var kv in t) tex[kv.Key] = kv.Value;
         if (models.Count == 0) throw new InvalidDataException($"{System.IO.Path.GetFileName(pac)}: no model inside (not a WWE 2K19 - 2K22 character pack?)");
         Directory.CreateDirectory(root);
@@ -624,6 +700,20 @@ public static class YukesPack
                     }
             }
         }
+        // A piece whose picture is in none of the packs: say so. It used to come out quietly bare, and the
+        // person had no way of knowing which file the mod was missing (2026-11-17).
+        var bare = new List<string>();
+        foreach (var me in whole.Meshes)
+            if (me.Diffuse.Length > 0 && !tex.ContainsKey(me.Diffuse.ToLowerInvariant()) && !bare.Contains(me.Diffuse))
+                bare.Add($"{me.Name} ({me.Diffuse})");
+        // (the mouth is always like this - 2K keeps cmm_mouth in the game, not in the mod - and PortIT
+        //  leaves the teeth and the tongue out anyway, so it is not worth a word)
+        bare.RemoveAll(b => b.Contains("(cmm_") || b.StartsWith("M_Teeth") || b.StartsWith("M_Tongue"));
+        if (bare.Count > 0)
+            log($"  ! no picture in this mod for: {string.Join(", ", bare)}"
+                + (TexturePacks(pac).Count == 0
+                    ? $" - a tx{System.IO.Path.GetFileNameWithoutExtension(pac)[2..]}.pac is missing next to {System.IO.Path.GetFileName(pac)}"
+                    : " - those pieces will have no colour of their own"));
         // (the face paint layer: no mesh names it - 2K draws it over the head - so it was never saved and the face came out
         //  bare; Finn Balor's Demon, 2K19, user report 2026-11-13. Port2k.FacePaint lays facepaint_color on head_color)
         foreach (var (src, dstName) in new[] { ("facepaint", "facepaint_color.dds"), ("facepaint_n", "facepaint_nrm.dds") })

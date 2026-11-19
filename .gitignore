@@ -35,3 +35,6 @@ oo2core*.dll
 
 # the big-model DLL build output
 bigmodel_dll/out/
+
+# the Report / Suggest relay address - baked into the build, never published
+relay.local.txt

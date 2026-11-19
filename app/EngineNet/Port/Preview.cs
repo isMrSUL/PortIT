@@ -24,6 +24,8 @@ public static class Preview
         public int[] T = [];
         public float[]? Col; public int Cw, Ch;            // (colour texture, RGBA float32)
         public float[]? Cut; public int Aw, Ah, ACh; public double CutAt;   // (cut-out texture, channel, threshold)
+        // the SOURCE preview's cut-out mask: one byte per texel, at the map's OWN size (see CutMap below)
+        public byte[]? Mask; public int Mw, Mh;
         public float[] Solid = [200, 200, 205];
         public bool Textured, Highlight;
     }
@@ -249,79 +251,56 @@ public static class Preview
     static (bool, double, double, double) Hi(Part p, double r, double g, double b) =>
         p.Highlight ? (true, 0.35 * r + 0.65 * 255, 0.35 * g + 0.65 * 150, 0.35 * b + 0.65 * 40) : (true, r, g, b);
 
-    public static string RenderSource(SourceAew.Model src, string outPath, int lod = 1, int texSide = 512, string title = "the 2K model, before porting", string? highlight = null)
+    /// <summary>
+    /// The source model's picture: front, side and back, drawn by the SAME renderer as the 3D view (Viewer3D) so the two
+    /// always agree, and drawn at twice the size then averaged down, which is what takes the jagged edges off.
+    ///
+    /// It used to have a flat renderer of its own with harder light, no smoothing and only two views (2026-11-18).
+    /// </summary>
+    /// <param name="hide">pieces unticked in the Meshes list: left out of the picture</param>
+    public static string RenderSource(SourceAew.Model src, string outPath, int lod = 1, int texSide = 512,
+                                      string title = "the 2K model, before porting", string? highlight = null,
+                                      IEnumerable<string>? hide = null)
     {
-        var lods = new Dictionary<string, List<List<Mcd.LodMesh>>>();
-        int[] TrisFor(SourceAew.SourceMesh me)
+        var scene = SourceScene.Build(src, lod);
+        var off = new HashSet<string>(hide ?? [], StringComparer.OrdinalIgnoreCase);
+        foreach (var p in scene.Parts)
         {
-            if (me.SourcePath == null) return me.Tris;
-            if (!lods.TryGetValue(me.SourcePath, out var L))
-            {
-                try { L = Mcd.Load(me.SourcePath).Lods; } catch (Exception) { L = []; }
-                lods[me.SourcePath] = L;
-            }
-            if (L.Count > lod)
-                foreach (var row in L[lod]) if (row.Mesh == me.Index) return row.Triangles;
-            return me.Tris;
+            p.Hidden = off.Contains(p.Name);
+            p.Highlight = highlight != null && string.Equals(p.Name, highlight, StringComparison.OrdinalIgnoreCase);
         }
-        var cache = new Dictionary<string, (float[] Px, int W, int H)?>();
-        (float[] Px, int W, int H)? Image(string path)
+        SourceScene.Measure(scene);
+        return DrawScene(scene, outPath, string.IsNullOrEmpty(title) ? "" : title + "  -  front / side / back");
+    }
+
+    /// <summary>three views of a scene, each drawn at 2x and averaged down (SS2x anti-aliasing)</summary>
+    public static string DrawScene(Viewer3D.Scene scene, string outPath, string title)
+    {
+        const int PanelW = 420, PanelH = 760, SS = 2;
+        var views = new (double Yaw, double Pitch)[] { (0, 0), (-Math.PI / 2, 0), (Math.PI, 0) };
+        int W = PanelW * views.Length, H = PanelH;
+        var img = new float[W * H * 3];
+        for (int i = 0; i < W * H; i++) { img[3 * i] = 13; img[3 * i + 1] = 17; img[3 * i + 2] = 24; }
+        for (int v = 0; v < views.Length; v++)
         {
-            if (!cache.TryGetValue(path, out var c))
-            {
-                try
+            var cam = new Viewer3D.Camera { Yaw = views[v].Yaw, Pitch = views[v].Pitch, Zoom = 0.96 };
+            var big = Viewer3D.Draw(scene, PanelW * SS, PanelH * SS, cam);     // BGRA
+            int bw = PanelW * SS;
+            for (int y = 0; y < PanelH; y++)
+                for (int x = 0; x < PanelW; x++)
                 {
-                    var im = ImageIO.Load(path).ToRgba();
-                    if (Math.Max(im.W, im.H) > texSide) im = Resample.ResizeRgbaPremultiplied(im, texSide, Math.Max(1, texSide * im.H / im.W), Filter.Bilinear);
-                    c = (Floats(im), im.W, im.H);
+                    int r = 0, g = 0, b = 0;
+                    for (int dy = 0; dy < SS; dy++)
+                        for (int dx = 0; dx < SS; dx++)
+                        {
+                            int o = 4 * ((y * SS + dy) * bw + x * SS + dx);
+                            b += big[o]; g += big[o + 1]; r += big[o + 2];
+                        }
+                    int at = 3 * (y * W + v * PanelW + x), n = SS * SS;
+                    img[at] = (float)r / n; img[at + 1] = (float)g / n; img[at + 2] = (float)b / n;
                 }
-                catch (Exception) { c = null; }
-                cache[path] = c;
-            }
-            return c;
         }
-        var parts = new List<Part>();
-        foreach (var me in src.Meshes)
-        {
-            if (me.Variant || me.Kind == "teeth" || me.Material.ToLowerInvariant() is "m_tongue" or "m_teeth") continue;
-            var T = TrisFor(me);
-            if (T.Length == 0) continue;
-            var p = new Part { V = me.Positions, N = me.Normals, UV = me.Uvs, T = T, Highlight = highlight != null && string.Equals(me.Material, highlight, StringComparison.OrdinalIgnoreCase) };
-            var col = me.Textures.TryGetValue("color", out var cp) ? Image(cp) : null;
-            (float[] Px, int W, int H)? cut = null; int cch = 0;
-            if (me.Kind == "hair" && col != null && !me.Textures.ContainsKey("rai")) { cut = col; cch = 3; }
-            else if (me.Kind == "hair" || (me.Cutout && col == null))
-            {
-                var rai = me.Textures.TryGetValue("rai", out var rp) ? Image(rp) : null;
-                if (rai != null) { cut = rai; cch = 1; }
-                var c = new double[] { .05, .04, .03 };
-                if (me.Colors != null && me.Colors.Length > 0)
-                    for (int k = 0; k < 3; k++)
-                    {
-                        var colv = Enumerable.Range(0, me.Colors.Length / me.ColorC).Select(i => me.Colors[me.ColorC * i + k]).Order().ToArray();
-                        int n = colv.Length;
-                        c[k] = n % 2 == 1 ? colv[n / 2] : (colv[n / 2 - 1] + colv[n / 2]) / 2;
-                    }
-                for (int k = 0; k < 3; k++) c[k] = c[k] <= 0.0031308 ? 12.92 * c[k] : 1.055 * Math.Pow(Math.Clamp(c[k], 0, 1), 1 / 2.4) - 0.055;
-                p.Solid = c.Select(x => (float)(x * 255)).ToArray();
-                col = null;
-            }
-            else if (me.Cutout && col != null) { cut = col; cch = 3; }
-            if (col != null) { p.Col = col.Value.Px; p.Cw = col.Value.W; p.Ch = col.Value.H; }
-            if (cut != null) { p.Cut = cut.Value.Px; p.Aw = cut.Value.W; p.Ah = cut.Value.H; p.ACh = cch; p.CutAt = 110; }
-            parts.Add(p);
-        }
-        var (img, W, H) = Draw(parts, false, (p, _, u, v) =>
-        {
-            if (p.Cut != null && !(p.Cut[4 * ((int)(v * (p.Ah - 1)) * p.Aw + (int)(u * (p.Aw - 1))) + p.ACh] > 110)) return (false, 0, 0, 0);
-            if (p.Col != null)
-            {
-                int at = 4 * ((int)(v * (p.Ch - 1)) * p.Cw + (int)(u * (p.Cw - 1)));
-                return Hi(p, p.Col[at], p.Col[at + 1], p.Col[at + 2]);
-            }
-            return Hi(p, p.Solid[0], p.Solid[1], p.Solid[2]);
-        });
-        Save(img, W, H, string.IsNullOrEmpty(title) ? "" : title + "  -  front / side", outPath);
+        Save(img, W, H, title, outPath);
         return outPath;
     }
 }

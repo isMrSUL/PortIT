@@ -18,10 +18,52 @@ namespace PortIT.Engine.Build;
 /// </summary>
 public static class HairChains
 {
-    /// <summary>a stock-like line (Edge: radius 0.15-0.20, visc 0.10-0.15, grav 0.08, spring 0.02, bend 0.03-0.05)</summary>
-    public const string Params = "0.18 0.12\t0.08\t0.02\t0.0\t0\t0.0\t0.04\t0.0";
     public const double SegLen = 0.85;       // (stock segments: 0.83 - 0.85 units)
+    /// <summary>the game's own limit: chain records are 1408 bytes at H+768+1408*i, so a 17th would overwrite H+23296
+    /// (the sub-model table) - the port makers' HAIR_PHYSICS.md, "up to 16 chains"</summary>
     public const int MaxChains = 16;
+    /// <summary>the game's own limit: node j sits at C+16+80*j and the segment rest lengths start at C+1296, so a 17th
+    /// node would overwrite them - and HAIR_PHYSICS.md says "there is no bound check against 16 nodes", so WE keep it</summary>
+    public const int MaxNodes = 16;
+    /// <summary>a point in the front 60 degrees has to be this close to a strand (bangs must not be dragged sideways)</summary>
+    public const double FrontReach = 0.8;
+
+    /// <summary>
+    /// How much the hair swings. Measured off all 445 chain settings lines of the game's own 43 haired superstars
+    /// (pac/ch/ch*.pac, PACH child 0x3C): radius 0.00-0.70, visc 0.00-0.45, grav 0.006-0.132, bend 0.00-0.45, with
+    /// spring / damp / A / lencorr / movecorr 0 on nearly every line. The only thing a chain's settings track is its
+    /// LENGTH, not where it sits on the head (checked across the 43: no side-versus-back pattern).
+    /// </summary>
+    public enum Feel { Gentle, Natural, Loose }
+
+    public static Feel FeelOf(string? s) => s?.ToLowerInvariant() switch
+    {
+        "gentle" => Feel.Gentle, "loose" => Feel.Loose, _ => Feel.Natural,
+    };
+
+    /// <summary>bend (the game calls it 曲難, "hard to bend") by segment count - the one strong trend in the stock
+    /// data: 2 segments 0.191, 3 0.128, 4 0.080, 5 0.037, 6 0.034, 7 0.041, 8 0.045, 9 0.050 (means of 445 lines)</summary>
+    static double StockBend(int segs) => segs switch { <= 2 => 0.19, 3 => 0.13, 4 => 0.08, 5 => 0.05, _ => 0.04 };
+
+    /// <summary>one stock-shaped settings line for a chain of this many segments</summary>
+    public static string Line(int segs, Feel feel)
+    {
+        // radius (the strand's thickness for collision): stock mean 0.217, a little thicker on longer chains
+        double radius = 0.18 + 0.01 * segs;
+        // visc: stock 0.13 on short chains rising to 0.22 on long ones - long hair is calmer, not wilder
+        double visc = 0.14 + 0.008 * segs;
+        double grav = 0.05;                                   // (stock median 0.050, and no length trend)
+        double bend = StockBend(segs);
+        // the user's choice, kept inside the range the game's own superstars use
+        if (feel == Feel.Gentle) { grav *= 0.7; visc *= 1.4; bend *= 1.6; }
+        else if (feel == Feel.Loose) { grav *= 1.45; visc *= 0.7; bend *= 0.6; }
+        radius = Math.Clamp(radius, 0.10, 0.30);
+        visc = Math.Clamp(visc, 0.05, 0.30);
+        grav = Math.Clamp(grav, 0.020, 0.090);
+        bend = Math.Clamp(bend, 0.0, 0.32);
+        // radius visc grav spring damp A lencorr bend movecorr  (spring / damp / A / lencorr / movecorr 0, as stock)
+        return $"{radius:0.0000} {visc:0.0000}\t{grav:0.0000}\t0.0000\t0.0000\t0\t0.0000\t{bend:0.0000}\t0.0000";
+    }
     /// <summary>a hanging hair point further than this from every strand (units, ~0.11 m) keeps its weights</summary>
     public const double MaxReach = 1.6;
 
@@ -66,7 +108,7 @@ public static class HairChains
     /// in place for the hair that moves), the shared node table and its world frames (4 x 4, column vectors)</summary>
     public static Result? Build(List<Jboy.Node> nodes, List<double[]> worlds, Dictionary<string, int> index,
                                 List<(double[][] Pos, List<List<(int B, double W)>> W)> hair, List<double[][]> skin, Action<string> note,
-                                List<(double[][] Pos, List<List<(int B, double W)>> W)>? extras = null)
+                                List<(double[][] Pos, List<List<(int B, double W)>> W)>? extras = null, Feel feel = Feel.Natural)
     {
         if (!index.TryGetValue("atama", out int ia)) { note("moving hair: no atama bone - left out"); return null; }
         var Wa = worlds[ia];
@@ -84,13 +126,18 @@ public static class HairChains
         double headH = Math.Max(Pa[1] - crown, 1.0);              // (+Y is down: the crown has the smallest y)
         double rootY = Pa[1] - 0.55 * headH;                        // (the roots: a little above the ears, as Edge's)
         double hangY = Pa[1] + 0.35 * headH;                        // (hair below this hangs: under the jaw)
+        // Bangs / a front-draped strand: the game's own superstars DO have chains at the front - 51 of the 345 chain
+        // roots in the 43 haired stock characters sit more than 120 degrees round from the back, so inside the front
+        // 60 degrees (measured off their kami_bNN root offsets). But a fringe lying on the forehead must stay rigid,
+        // so hair at the front only earns a chain when it reaches well past the jaw, down around the collarbone.
+        double frontHangY = Pa[1] + 1.0 * headH;
         // hair points that hang: well below the roots, not at the face's front, weighted to the head (not a beard on the jaw)
         double Az(double[] p) { var d = Sub(p, Pa); d[1] = 0; double ang = Math.Atan2(Dot(Cross(front, d), [0, -1, 0]), Dot(front, d)); return ang; }
         const int K = 12;                                           // (sectors round the head)
         double secW = 2 * Math.PI / K;
         int Sector(double az) => ((int)Math.Floor((az + Math.PI) / secW) % K + K) % K;
         double SecMid(int s) => -Math.PI + (s + 0.5) * secW;
-        bool Face(double az) => Math.Abs(az) < 0.95;                // (+-54 degrees of the front: bangs, beards stay rigid)
+        bool Face(double az) => Math.Abs(az) < 1.05;                // (the front 60 degrees - the stock cut, measured)
         var pts = new List<double[]>[K];
         for (int s = 0; s < K; s++) pts[s] = [];
         int headBones = ia;
@@ -99,9 +146,7 @@ public static class HairChains
             {
                 var p = P[v];
                 if (p[1] < rootY) continue;
-                double az = Az(p);
-                if (Face(az)) continue;
-                pts[Sector(az)].Add(p);
+                pts[Sector(Az(p))].Add(p);
             }
         // a chain per sector whose hair reaches below the jaw
         var chains = new List<(int Sector, List<double[]> Pts)>();
@@ -110,7 +155,7 @@ public static class HairChains
             var ps = pts[s];
             if (ps.Count < 30) continue;
             double low = ps.Max(p => p[1]);
-            if (low < hangY) continue;
+            if (low < (Face(SecMid(s)) ? frontHangY : hangY)) continue;
             // the strand's path: the mean point of each height slice from the roots down
             var path = new List<double[]>();
             const double slice = 0.35;
@@ -126,7 +171,7 @@ public static class HairChains
             // resampled at one length L (as the game needs), from the first point down to the last
             double total = 0;
             for (int i = 1; i < path.Count; i++) total += Len(Sub(path[i], path[i - 1]));
-            int nseg = Math.Clamp((int)Math.Round(total / SegLen), 2, 8);
+            int nseg = Math.Clamp((int)Math.Round(total / SegLen), 2, Math.Min(MaxNodes - 1, 9));   // (stock: 2 - 9 segments)
             double L = total / nseg;
             var nodesAt = new List<double[]> { path[0] };
             double want = L, run = 0;
@@ -206,7 +251,7 @@ public static class HairChains
                 Rp = Rw; Pp = P[j]; prevY = y; prevX = x;
             }
             chainBones.Add((chains[c].Sector, first, n, P, L));
-            sb.Append($"{root}\t{Params}\r\n");
+            sb.Append($"{root}\t{Line(n - 1, feel)}\r\n");
         }
         res.Settings = sb.ToString();
 
@@ -221,7 +266,7 @@ public static class HairChains
             {
                 var (P, W) = extras[ei];
                 if (P.Length == 0) continue;
-                int on = P.Count(p => p[1] >= rootY && !Face(Az(p)) && chainBones.Any(cb => NearStrand(cb.P, p) < 0.6));
+                int on = P.Count(p => p[1] >= rootY && chainBones.Any(cb => NearStrand(cb.P, p) < 0.6));
                 if (on < 0.8 * P.Length) continue;
                 Assign(P, W, true);
                 res.ExtrasMoved.Add(ei);
@@ -247,7 +292,7 @@ public static class HairChains
                 var p = P[v];
                 if (p[1] < rootY) continue;
                 double az = Az(p);
-                if (Face(az)) continue;
+                double reach = Face(az) ? FrontReach : MaxReach;     // (a fringe must not be dragged onto a side chain)
                 // (a beard / face card: its weights are on face bones, not the head - left alone)
                 // (hanging hair lying on the back is on mune / sakotsu now - it moves; only face-bone hair stays)
                 double faceW = W[v].Where(e => faceBones.Contains(e.B)).Sum(e => e.W);
@@ -269,14 +314,14 @@ public static class HairChains
                     near.Add((ci, best, bs, bf));
                 }
                 near = near.OrderBy(x => x.D).Take(2).ToList();
-                if (near[0].D > MaxReach) continue;                   // (far from every strand: stays as it is)
+                if (near.Count == 0 || near[0].D > reach) continue;   // (far from every strand: stays as it is)
                 var ws = new List<(int B, double W)>();
                 double wsum = 0;
                 foreach (var (ci, d, seg0, frac) in near)
                 {
-                    if (d > MaxReach) continue;
+                    if (d > reach) continue;
                     // (inverse-distance share; a point right on one strand goes to it alone)
-                    double aw = near.Count == 2 && near[1].D <= MaxReach ? 1.0 / Math.Max(d, 0.05) : 1.0;
+                    double aw = near.Count == 2 && near[1].D <= reach ? 1.0 / Math.Max(d, 0.05) : 1.0;
                     var cb = chainBones[ci];
                     int seg = Math.Min(seg0, cb.Count - 2);
                     int bone = cb.First + seg;
@@ -297,26 +342,68 @@ public static class HairChains
           return count;
         }
         if (res.ExtrasMoved.Count > 0) note($"moving hair: {res.ExtrasMoved.Count} piece(s) worn on the hair move with it");
-        res.Notes.Add($"moving hair: {chains.Count} chains ({string.Join(", ", chainBones.Select(c => c.Count - 1))} segments of {chainBones.Average(c => c.L):F2}), {moved} hair points on them");
+        int atFront = chainBones.Count(c => Face(SecMid(c.Sector)));
+        res.Notes.Add($"moving hair ({feel.ToString().ToLowerInvariant()}): {chains.Count} chains"
+                    + (atFront > 0 ? $", {atFront} of them at the front" : "")
+                    + $" ({string.Join(", ", chainBones.Select(c => c.Count - 1))} segments of {chainBones.Average(c => c.L):F2}), {moved} hair points on them");
         return res;
     }
 
-    /// <summary>child 0x3D (body collision capsules) from a stock superstar with moving hair in the template's folder</summary>
-    public static byte[]? StockCapsules(string templatePath)
+    /// <summary>
+    /// Child 0x3D, the body's collision capsules the hair bounces off: "bone x0 y0 z0 r0 x1 y1 z1 r1 k" per capsule,
+    /// at most 14, in the bone's own local space.
+    /// These are NOT the same for everyone - 41 of the 43 haired stock characters have their own set, fitted to that
+    /// body (Edge's upper-arm capsule is radius 1.10, Michelle McCool's 0.75). PortIT used to copy Edge's onto every
+    /// port, so a slim woman's hair floated off her shoulders and a big man's sank into his chest. Now:
+    ///  1. the body type's own capsules, if the superstar the port is posed to has them (the template IS ch&lt;base&gt;.pac);
+    ///  2. otherwise the nearest stock body that has a set - same weight class first, then the closest body scale;
+    ///  3. otherwise a long-haired man's (Edge, The Rock, Undertaker).
+    /// Every stock skeleton is the same size and the game scales the whole record by height=, so the numbers need no
+    /// scaling of their own.
+    /// </summary>
+    public static (byte[] Caps, string From)? StockCapsules(string templatePath)
     {
         string dir = Path.GetDirectoryName(templatePath) ?? ".";
-        foreach (var name in new[] { "ch110.pac", "ch102.pac", "ch103.pac" }.Concat(Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "ch*.pac").Select(Path.GetFileName).OfType<string>() : []))
+        if (Read(templatePath) is { } own) return (own, "the body type's own");
+        int baseId = int.TryParse(Path.GetFileNameWithoutExtension(templatePath).TrimStart('c', 'h'), out int bi) ? bi : 0;
+        // the stock bodies in order of likeness to the base: its weight class first, then the closest scale
+        var order = new List<int>();
+        try
         {
-            string p = Path.Combine(dir, name);
-            if (!File.Exists(p)) continue;
-            try
-            {
-                var arc = Epk8.Read(File.ReadAllBytes(p));
-                foreach (var e in Pach.Read(arc.Groups[0].Entries[0].Data))
-                    if (e.Id == 0x3d) return Bpe.Unpack(e.Data);
-            }
-            catch (Exception) { }
+            string game = Path.GetFullPath(Path.Combine(dir, "..", ".."));
+            var sizes = Port.Sizing.BaseSizes(game);
+            if (sizes.TryGetValue(baseId, out var mine))
+                order = sizes.Where(kv => kv.Key != baseId)
+                             .OrderBy(kv => kv.Value.WeightClass == mine.WeightClass ? 0 : 1)
+                             .ThenBy(kv => Math.Abs(kv.Value.Scale - mine.Scale))
+                             .Select(kv => kv.Key).ToList();
         }
+        catch (Exception) { }
+        foreach (int id in order.Concat([110, 100, 103]))
+        {
+            string q = Path.Combine(dir, $"ch{id}.pac");
+            if (q.Equals(templatePath, StringComparison.OrdinalIgnoreCase)) continue;
+            if (Read(q) is { } caps) return (caps, $"superstar {id}'s (the nearest body with hair capsules)");
+        }
+        return null;
+    }
+
+    /// <summary>child 0x3D out of one character pac, or null if it has none</summary>
+    static byte[]? Read(string pac)
+    {
+        if (!File.Exists(pac)) return null;
+        try
+        {
+            var arc = Epk8.Read(File.ReadAllBytes(pac));
+            foreach (var g in arc.Groups)
+                foreach (var e in g.Entries)
+                {
+                    if (e.Data == null || e.Data.Length == 0) continue;
+                    foreach (var k in Pach.Read(e.Data))
+                        if (k.Id == 0x3d) return Bpe.Unpack(k.Data);
+                }
+        }
+        catch (Exception) { }
         return null;
     }
 }

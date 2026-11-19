@@ -20,6 +20,15 @@ public sealed class SvrBuilder
     public (int W, int H) ColorSize = (2048, 1024), NormalSize = (1024, 1024);
     public static readonly (int W, int H) MkSize = (512, 256);
     public int PageLimit = Budget.Limit;
+    /// <summary>
+    /// How wet the skin looks - the game's "oily" wrestlers. The skin shader (yBumpMapSS) multiplies
+    /// g_fSweatLev, which the game raises as a match goes on, by a sweat mask, and that mask is the ALPHA of the
+    /// colour texture. Stock SvR 2011 skin is a flat 77 (measured on ch139 and others); PortIT's old fallback was
+    /// 47, drier than the game's own. null = leave the model's own value (the 2K material's sweat / sweat_mask).
+    /// (user request 2026-11-16: "why does character from game look oily ... have the ability to turn on or off")
+    /// </summary>
+    public int? Sweat;
+    public const int StockSweat = 77;
     static readonly Dictionary<string, string> SkinSlots = new() { ["texDiffuse"] = "color", ["texNormal"] = "normal", ["texOcclusion"] = "mk", ["texTilingMap"] = "noise" };
     static readonly Dictionary<string, string> EyeSlots = new() { ["texDiffuse"] = "color", ["texCubeRefction"] = "cubemap", ["texRefctionReg"] = "color", ["texOcclusion"] = "mk" };
     static readonly Dictionary<string, string> LashSlots = new() { ["texDiffuse"] = "color" };
@@ -71,8 +80,33 @@ public sealed class SvrBuilder
 
         public Template(string path)
         {
+            // The template is the model a port is posed to, and three of its parts are read: the body
+            // (0), the hair (0x2710) and the eyelashes (0x4E20). It used to be the pac's FIRST entry,
+            // whatever that was - and a pac whose first model is itself a port (PortIT's own "replace a
+            // superstar" writes one) has no eyelashes, so every later port died on a bare
+            // "KeyNotFoundException: 20000" (found 2026-11-17). Now the first entry that HAS what is
+            // needed is used, and if none does, the message says what to do.
             var arc = Epk8.Read(File.ReadAllBytes(path));
-            foreach (var e in Pach.Read(Bpe.Unpack(arc.Groups[0].Entries[0].Data))) T[(int)e.Id] = Bpe.Unpack(e.Data);
+            var picked = new Dictionary<int, byte[]>();
+            var tried = new List<string>();
+            foreach (var g in arc.Groups)
+                foreach (var e in g.Entries)
+                {
+                    if (e.Data.Length == 0) continue;
+                    Dictionary<int, byte[]> parts;
+                    try { parts = Pach.Read(Bpe.Unpack(e.Data)).ToDictionary(k => (int)k.Id, k => Bpe.Unpack(k.Data)); }
+                    catch (Exception) { continue; }
+                    tried.Add(e.NameText.Trim('\0', ' '));
+                    if (!parts.ContainsKey(0) || !parts.ContainsKey(0x4e20)) continue;
+                    picked = parts;
+                    break;
+                }
+            if (picked.Count == 0)
+                throw new BuildError($"{System.IO.Path.GetFileName(path)} cannot be used as the body type: none of its models "
+                    + $"({(tried.Count == 0 ? "none readable" : string.Join(", ", tried))}) has both a body and eyelashes. "
+                    + "A character pac that PortIT's \"replace a superstar\" has written is like this. Put the game's own "
+                    + "back from Mods\\_portit_backup, or choose another body type.");
+            foreach (var kv in picked) T[kv.Key] = kv.Value;
             Body = Jboy.Read(T[0]);
             Hair = T.ContainsKey(0x2710) ? Jboy.Read(T[0x2710]) : null;
             Lash = Jboy.Read(T[0x4e20]);
@@ -506,6 +540,8 @@ public sealed class SvrBuilder
         if (!faced) { faced = true; FacePivots(meshes); }
         // moving hair (HairChains): bone chains in the hair model + the game's hair settings (0x3C) and capsules (0x3D)
         List<Jboy.Node>? hairNodes = null; byte[]? hairSettings = null;
+        if (Truthy(a["hair_physics"]) && !meshes.Any(m => m.Kind == "hair"))
+            Warnings.Add("moving hair: this model has no hair pieces of its own (its hair is painted on or part of the head), so there is nothing to swing - the port is fine, the hair just stays still");
         if (Truthy(a["hair_physics"]) && meshes.Any(m => m.Kind == "hair"))
         {
             var Wn = new List<double[]>();
@@ -519,9 +555,11 @@ public sealed class SvrBuilder
             var hm = meshes.Where(m => m.Kind == "hair").ToList();
             // (gear that may be worn on the hair - not the body, head, eyes or mouth)
             var ex = meshes.Where(m => m.Kind == "skin" && !System.Text.RegularExpressions.Regex.IsMatch(m.Name, "^(M_)?(Body|Head|EYE|MouthBag|Teeth|Tongue)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)).ToList();
+            // (hair_physics is true in an older spec and "gentle" / "natural" / "loose" in a new one)
+            var feel = HairChains.FeelOf(a["hair_physics"] is System.Text.Json.Nodes.JsonValue fv && fv.TryGetValue<string>(out var fs) ? fs : null);
             var hr = HairChains.Build(nodes, Wn, index, hm.Select(m => (m.Pos, m.W)).ToList(),
                                       meshes.Where(m => m.Kind == "skin" && m.Name.StartsWith("M_Head", StringComparison.OrdinalIgnoreCase) || m.Name.StartsWith("M_Body", StringComparison.OrdinalIgnoreCase)).Select(m => m.Pos).ToList(),
-                                      Warnings.Add, ex.Select(m => (m.Pos, m.W)).ToList());
+                                      Warnings.Add, ex.Select(m => (m.Pos, m.W)).ToList(), feel);
             if (hr != null)
             {
                 hairNodes = hr.Nodes; hairSettings = Encoding.ASCII.GetBytes(hr.Settings); Warnings.AddRange(hr.Notes);
@@ -558,7 +596,12 @@ public sealed class SvrBuilder
                 var bse = nim ?? Img.Filled(im.W, im.H, 128, 128, 255, 255);
                 normals[k] = bse.ToRgba().WithAlpha(Resample.Resize(mask, bse.W, bse.H, Filter.Lanczos));
                 var rgb = im.ToRgb().ToRgba().Copy();
-                if (m.Material?["sweat_mask"] is JsonNode sw && (string?)sw is { Length: > 0 } swp)
+                if (Sweat is int want)                       // the user's choice wins over the model's own
+                {
+                    byte lv = (byte)Math.Clamp(want, 0, 255);
+                    for (int i = 3; i < rgb.Px.Length; i += 4) rgb.Px[i] = lv;
+                }
+                else if (m.Material?["sweat_mask"] is JsonNode sw && (string?)sw is { Length: > 0 } swp)
                     rgb = rgb.WithAlpha(Resample.Resize(ImageIO.Load(Path(swp)).ToRgba().ToL(), rgb.W, rgb.H, Filter.Lanczos));
                 else
                 {
@@ -632,7 +675,11 @@ public sealed class SvrBuilder
         if (hairSettings != null && kids.ContainsKey(0x2710))
         {
             kids[0x3c] = hairSettings;
-            if (HairChains.StockCapsules(templatePath) is { } caps) kids[0x3d] = caps;
+            if (HairChains.StockCapsules(templatePath) is { } caps)
+            {
+                kids[0x3d] = caps.Caps;
+                Warnings.Add($"moving hair: the hair bounces off the body capsules of {caps.From}");
+            }
             else Warnings.Add("moving hair: no stock body capsules found (0x3D) - the hair may pass through the shoulders");
         }
         // budget
@@ -708,7 +755,7 @@ public sealed class SvrBuilder
 
     /// <summary>rock_build + svr11_build main: model.json -&gt; ch.pac and the report (full: no page limit - the big-model
     /// route; the colour / normal sheets at the stock sizes either way)</summary>
-    public static JsonObject Run(string modelJson, string outPac, bool noLimit, string? stockBones = null)
+    public static JsonObject Run(string modelJson, string outPac, bool noLimit, string? stockBones = null, int? sweat = null)
     {
         var rep = new JsonObject { ["ok"] = false, ["out"] = outPac, ["warnings"] = new JsonArray() };
         try
@@ -716,6 +763,7 @@ public sealed class SvrBuilder
             var spec = JsonNode.Parse(File.ReadAllText(modelJson))!.AsObject();
             var b = new SvrBuilder(spec, System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(modelJson))!);
             if (noLimit) b.PageLimit = 1 << 30;
+            b.Sweat = sweat;
             rep["attires"] = b.Build(outPac);
             rep["warnings"] = new JsonArray(b.Warnings.Select(w => (JsonNode?)w).ToArray());
             try

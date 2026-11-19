@@ -24,6 +24,16 @@ public static class Viewer3D
         public int[] Inf = [];    // (4 per vertex: node index, -1 = none)
         public float[] Wt = [];
         public float[]? PV, PN;   // (posed by the hair test; null: the bind pose)
+        // ---- a piece of a SOURCE model (the 2K / mod model, before porting). The built model has ONE texture sheet for
+        // the whole body (Scene.Tex); a source model has one map per piece, so each piece carries its own.
+        public string Name = "";                       // the mesh name, for the piece list and for clicking one
+        public byte[]? Tex; public int TW, TH;         // this piece's own colour map (RGBA), instead of Scene.Tex
+        /// <summary>the cut-out mask: ONE byte per texel at the map's own size. Never shrunk - a hair strand map is
+        /// hairs one texel wide, and shrinking it turns the hair into a cloud of dots (2026-11-18).</summary>
+        public byte[]? Mask; public int Mw, Mh;
+        public float[]? Solid;                         // no colour map at all (2K26 hair): one flat colour
+        public bool Highlight;                         // drawn in orange ("Show" in the Meshes list)
+        public bool Hidden;                            // unticked: not drawn, but still in the list
     }
 
     public sealed class Scene
@@ -43,6 +53,9 @@ public static class Viewer3D
     {
         public double Yaw, Pitch, Zoom = 1, PanX, PanY;
         public bool Lit = true, Textured = true, Wire;
+        /// <summary>the wet / oily sheen on the skin, 0 none .. 1 strong - so the sweat setting can be SEEN
+        /// in the 3D view before porting (user request 2026-11-16)</summary>
+        public double Shine;
         public Camera Clone() => (Camera)MemberwiseClone();
     }
 
@@ -158,7 +171,10 @@ public static class Viewer3D
         var proj = s.Parts.Select(p =>
         {
             int n = p.Verts;
-            var sx = new float[n]; var syy = new float[n]; var sz = new float[n]; var sh = new float[n];
+            var sx = new float[n]; var syy = new float[n]; var sz = new float[n]; var sh = new float[n]; var sp2 = new float[n];
+            // the half vector between the light and the viewer, for the wet highlight (Blinn-Phong)
+            double hx = lx, hy = ly, hz = lz - 1, hn = Math.Max(Math.Sqrt(hx * hx + hy * hy + hz * hz), 1e-9);
+            hx /= hn; hy /= hn; hz /= hn;
             for (int i = 0; i < n; i++)
             {
                 var PVv = p.PV ?? p.V; var PNn = p.PN ?? p.N;
@@ -172,13 +188,18 @@ public static class Viewer3D
                 double nn = Math.Max(Math.Sqrt(nx1 * nx1 + ny2 * ny2 + nz2 * nz2), 1e-9);
                 double d = Math.Abs((nx1 * lx + ny2 * ly + nz2 * lz) / nn);
                 sh[i] = cam.Lit ? (float)(0.32 + 0.68 * d) : 1f;
+                if (cam.Shine > 0 && p.Model == 0)      // (the body child: skin and the gear that uses the skin shader)
+                {
+                    // abs, like the diffuse term above: these models' normals can point inward
+                    double nh = Math.Abs((nx1 * hx + ny2 * hy + nz2 * hz) / nn);
+                    double t = nh * nh; t *= t; t *= t; t *= t;        // ^16: a tight wet highlight
+                    sp2[i] = (float)(cam.Shine * t);
+                }
             }
-            return (sx, syy, sz, sh);
+            return (sx, syy, sz, sh, sp2);
         }).ToList();
         var zb = new float[W * H];
         Array.Fill(zb, float.PositiveInfinity);
-        byte[]? tex = cam.Textured ? s.Tex : null;
-        int tw = s.TW, th = s.TH;
         int bands = Math.Max(1, Math.Min(Environment.ProcessorCount * 2, H / 8));
         Parallel.For(0, bands, band =>
         {
@@ -186,8 +207,13 @@ public static class Viewer3D
             for (int pi = 0; pi < s.Parts.Count; pi++)
             {
                 var p = s.Parts[pi];
-                var (sx, syy, sz, sh) = proj[pi];
+                if (p.Hidden) continue;
+                var (sx, syy, sz, sh, sp2) = proj[pi];
                 var T = p.T; var UV = p.UV;
+                // a source model's piece brings its own map; the built model's pieces all share Scene.Tex
+                byte[]? tex = cam.Textured ? (p.Tex ?? s.Tex) : null;
+                int tw = p.Tex != null ? p.TW : s.TW, th = p.Tex != null ? p.TH : s.TH;
+                if (tex != null && (tw <= 0 || th <= 0)) tex = null;
                 for (int t = 0; t < T.Length; t += 3)
                 {
                     int i0 = T[t], i1 = T[t + 1], i2 = T[t + 2];
@@ -216,6 +242,15 @@ public static class Viewer3D
                             int at = py * W + pxx;
                             if (!(z < zb[at])) continue;
                             double r = 225, g = 225, bl = 230;
+                            if (p.Solid != null) { r = p.Solid[0]; g = p.Solid[1]; bl = p.Solid[2]; }
+                            if (p.Mask != null)
+                            {
+                                // the cut-out mask is read at its OWN size, nearest texel, never averaged
+                                double mu = b0 * UV[2 * i0] + b1 * UV[2 * i1] + b2 * UV[2 * i2];
+                                double mv = b0 * UV[2 * i0 + 1] + b1 * UV[2 * i1 + 1] + b2 * UV[2 * i2 + 1];
+                                mu -= Math.Floor(mu); mv -= Math.Floor(mv);
+                                if (p.Mask[(int)(mv * (p.Mh - 1)) * p.Mw + (int)(mu * (p.Mw - 1))] <= AlphaRef) continue;
+                            }
                             if (tex != null)
                             {
                                 double u = b0 * UV[2 * i0] + b1 * UV[2 * i1] + b2 * UV[2 * i2];
@@ -228,7 +263,7 @@ public static class Viewer3D
                                     int ix1 = Math.Min(ix + 1, tw - 1), iy1 = Math.Min(iy + 1, th - 1);
                                     int o00 = 4 * (iy * tw + ix), o10 = 4 * (iy * tw + ix1), o01 = 4 * (iy1 * tw + ix), o11 = 4 * (iy1 * tw + ix1);
                                     double w00 = (1 - ax) * (1 - ay), w10 = ax * (1 - ay), w01 = (1 - ax) * ay, w11 = ax * ay;
-                                    if (p.Cut && tex[o00 + 3] * w00 + tex[o10 + 3] * w10 + tex[o01 + 3] * w01 + tex[o11 + 3] * w11 <= AlphaRef) continue;
+                                    if (p.Cut && p.Mask == null && tex[o00 + 3] * w00 + tex[o10 + 3] * w10 + tex[o01 + 3] * w01 + tex[o11 + 3] * w11 <= AlphaRef) continue;
                                     r = tex[o00] * w00 + tex[o10] * w10 + tex[o01] * w01 + tex[o11] * w11;
                                     g = tex[o00 + 1] * w00 + tex[o10 + 1] * w10 + tex[o01 + 1] * w01 + tex[o11 + 1] * w11;
                                     bl = tex[o00 + 2] * w00 + tex[o10 + 2] * w10 + tex[o01 + 2] * w01 + tex[o11 + 2] * w11;
@@ -236,16 +271,18 @@ public static class Viewer3D
                                 else
                                 {
                                     int o = 4 * ((int)fy * tw + (int)fx);
-                                    if (p.Cut && tex[o + 3] <= AlphaRef) continue;
+                                    if (p.Cut && p.Mask == null && tex[o + 3] <= AlphaRef) continue;
                                     r = tex[o]; g = tex[o + 1]; bl = tex[o + 2];
                                 }
                             }
                             double shd = b0 * sh[i0] + b1 * sh[i1] + b2 * sh[i2];
+                            double wet = 255 * (b0 * sp2[i0] + b1 * sp2[i1] + b2 * sp2[i2]);
+                            if (p.Highlight) { r = 0.30 * r + 0.70 * 255; g = 0.30 * g + 0.70 * 120; bl = 0.30 * bl + 0.70 * 20; }
                             zb[at] = z;
                             int q = 4 * at;
-                            px[q] = (byte)Math.Clamp(bl * shd, 0, 255);
-                            px[q + 1] = (byte)Math.Clamp(g * shd, 0, 255);
-                            px[q + 2] = (byte)Math.Clamp(r * shd, 0, 255);
+                            px[q] = (byte)Math.Clamp(bl * shd + wet, 0, 255);
+                            px[q + 1] = (byte)Math.Clamp(g * shd + wet, 0, 255);
+                            px[q + 2] = (byte)Math.Clamp(r * shd + wet, 0, 255);
                             px[q + 3] = 255;                     // (opaque where the model is: the cut-out's alpha)
                         }
                     }

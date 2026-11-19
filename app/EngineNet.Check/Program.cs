@@ -58,6 +58,7 @@ static string PyFloat(double d)
     return r;
 }
 static string[] HI(Img im) => [im.Mode, im.W.ToString(), im.H.ToString(), H(im.Px)];
+static double SrgbOf(double c) => c <= 0.0031308 ? 12.92 * c : 1.055 * Math.Pow(Math.Clamp(c, 0, 1), 1 / 2.4) - 0.055;
 
 if (args.Length < 2) { Console.WriteLine("usage: portit-check <check> <ref>"); return 2; }
 // (PORTIT_CULTURE=es-ES: run as on a Spanish Windows - decimal commas - user reports 2026-11-13)
@@ -2077,6 +2078,241 @@ switch (args[0])
         Console.WriteLine("oo2core loaded: " + (oo.Count == 0 ? "no" : string.Join(", ", oo)));
         break;
     }
+    // ---- the fault-finding tools (Doctor.cs): what a bug report needs, without throwaway scripts
+    case "meshshot":
+    {
+        // (args: out.png <model.json | port folder> [x0 x1 y0 y1] [width]) - one colour per mesh, so you can SEE
+        //  which piece is on top where the port looks wrong
+        if (!args[1].EndsWith(".png", StringComparison.OrdinalIgnoreCase)) { Console.WriteLine("meshshot: the first argument is the OUTPUT .png"); return 2; }
+        double[]? bx = args.Length >= 7 ? [double.Parse(args[3]), double.Parse(args[4]), double.Parse(args[5]), double.Parse(args[6])] : null;
+        int w = args.Length >= 8 ? int.Parse(args[7]) : 900;
+        return PortIT.Check.Doctor.MeshShot(args[1], args[2], bx, w);
+    }
+    case "clipping":
+        // (args: <model.json | port folder> [how many to list]) - skin showing through the gear, and why
+        return PortIT.Check.Doctor.Clipping(args[1], args.Length > 2 ? int.Parse(args[2]) : 12, args.Length > 3 ? args[3] : null);
+    case "replay":
+    {
+        // (args: <report.zip | model folder> <work folder> [budget] [base] [game]) - a user's report -> a finished port
+        string game = args.Length > 5 ? args[5] : Environment.GetEnvironmentVariable("PORTIT_GAME") ?? "";
+        if (game.Length == 0) { Console.WriteLine("replay: give the SvR game folder as the last argument, or set PORTIT_GAME"); return 2; }
+        return PortIT.Check.Doctor.Replay(args[1], args[2], args.Length > 3 ? int.Parse(args[3]) : 190, args.Length > 4 ? int.Parse(args[4]) : 0, game);
+    }
+    case "clipdiff":
+    {
+        // (args: <bad port> <good port> [out.png] [x0 x1 y0 y1] [width]) - every pixel where the first port shows
+        //  skin and the second shows clothes: a clipping report answered in one command
+        double[]? bx2 = args.Length >= 8 ? [double.Parse(args[4]), double.Parse(args[5]), double.Parse(args[6]), double.Parse(args[7])] : null;
+        int w2 = args.Length >= 9 ? int.Parse(args[8]) : 900;
+        return PortIT.Check.Doctor.ClipDiff(args[1], args[2], args.Length > 3 && args[3] != "-" ? args[3] : null, bx2, w2);
+    }
+    case "portdiff":
+        // (args: A B) - two ports side by side: pages, piece sizes, how far points moved
+        return PortIT.Check.Doctor.PortDiff(args[1], args[2]);
+    case "runport":
+    {
+        // (args: wrestler folder, attire mcd, out folder, game folder, [budget], [pieces to leave out, comma separated])
+        // One port, straight from this build, with its whole log printed. For checking a fix against a user's own run.
+        var lp = new List<string>();
+        var rp = new PortIT.Engine.Port.Port2k().Build(args[1], args[2], args[3], args[4],
+                     args.Length > 5 && args[5] != "-" ? int.Parse(args[5]) : 190, log: lp.Add, print: lp.Add,
+                     leaveOut: args.Length > 6 && args[6] != "-" ? args[6].Split(',') : null);
+        foreach (var l in lp) Console.WriteLine("  " + l);
+        Console.WriteLine("port done: " + rp.GetType().Name);
+        ok++;
+        break;
+    }
+    case "updatetest":
+    {
+        // (args: an installed copy's folder, a feed .json, current version) - the self-update run for real against a
+        // throwaway copy: check the feed, download, verify, swap, then clean up. Nothing is published. 2026-11-19.
+        Environment.SetEnvironmentVariable("PORTIT_UPDATE_FEED", args[2] == "github" ? null : args[2]);   // ("github": the real one)
+        var cur = Version.Parse(args[3]);
+        var rel = PortIT.Engine.Update.Updater.CheckAsync(cur, CancellationToken.None).GetAwaiter().GetResult();
+        Console.WriteLine(rel == null ? "no newer release in the feed" : $"newer release: {rel.Tag} ({rel.ZipName}), checksum file found, notes {rel.Notes.Length} characters");
+        if (rel != null && !(args.Length > 4 && args[4] == "checkonly"))
+        {
+            var say = new Progress<string>(s => { if (!s.StartsWith("Downloading")) Console.WriteLine("  " + s); });
+            try
+            {
+                PortIT.Engine.Update.Updater.InstallAsync(rel, args[1], Path.Combine(Path.GetTempPath(), "portit_updtest"), say, CancellationToken.None).GetAwaiter().GetResult();
+                Console.WriteLine("installed. .old files left for the next start: " + Directory.EnumerateFiles(args[1], "*.old", SearchOption.AllDirectories).Count());
+                Console.WriteLine("clean-up removed " + PortIT.Engine.Update.Updater.CleanUp(args[1]));
+            }
+            catch (Exception e) { Console.WriteLine("REFUSED: " + e.Message); }
+        }
+        ok++;
+        break;
+    }
+    case "runreq":
+    {
+        // (args: a request.json) - run one engine command exactly as the app would, log and answer printed. Cak ids
+        // need PortIT.exe's archive reader, so this is for folder sources. 2026-11-18.
+        var lg = new List<string>();
+        var rq = JsonNode.Parse(File.ReadAllText(args[1]))!.AsObject();
+        var ans = new PortIT.Engine.Worker(lg.Add).Run(rq);
+        foreach (var l in lg) Console.WriteLine("  " + l);
+        Console.WriteLine(ans.ToJsonString());
+        ok++;
+        break;
+    }
+    case "fbxread":
+    {
+        // (args[1]: a .fbx) - parse a binary FBX with OUR OWN reader and say what is in it. Used to check a file
+        // another tool wrote (AnimIT's animation export), with a parser that knows nothing about how it was made.
+        var fx = new PortIT.Engine.Readers.Fbx(args[1]);
+        void Walk(PortIT.Engine.Readers.Fbx.Node nd, int depth, Dictionary<string, int> tally)
+        {
+            foreach (var k in nd.Kids)
+            {
+                tally[k.Name] = tally.GetValueOrDefault(k.Name) + 1;
+                if (depth < 1) Walk(k, depth + 1, tally);
+            }
+        }
+        foreach (var top in fx.Root.Kids)
+        {
+            var tally = new Dictionary<string, int>();
+            Walk(top, 0, tally);
+            Console.WriteLine($"{top.Name}: {string.Join(", ", tally.OrderByDescending(k => k.Value).Take(8).Select(k => k.Key + " x" + k.Value))}");
+        }
+        var objs = fx.Root["Objects"];
+        if (objs != null)
+        {
+            var models = objs.All("Model").ToList();
+            Console.WriteLine($"models {models.Count}: " + string.Join(", ", models.Take(6).Select(m => m.S(1).Split(' ')[0] + " (" + m.S(2) + ")")));
+            var curves = objs.All("AnimationCurve").ToList();
+            Console.WriteLine($"animation curves {curves.Count}");
+            if (curves.Count > 0)
+            {
+                var c0 = curves[0];
+                var t = c0["KeyTime"]; var v = c0["KeyValueFloat"];
+                Console.WriteLine($"  first curve: {(t != null ? t.I().Length : 0)} key times, {(v != null ? v.D().Length : 0)} values");
+            }
+            Console.WriteLine($"curve nodes {objs.All("AnimationCurveNode").Count()}, stacks {objs.All("AnimationStack").Count()}, layers {objs.All("AnimationLayer").Count()}");
+        }
+        var cons = fx.Root["Connections"];
+        if (cons != null) Console.WriteLine($"connections {cons.All("C").Count()}");
+        ok++;
+        break;
+    }
+    case "src3d":
+    {
+        // (args: wrestler folder, out_prefix) - the SOURCE model as the 3D VIEW draws it, at a few angles, with times.
+        // This is the path the viewer window uses (Worker.Scene3D -> SourceScene.Build -> Viewer3D.Draw). 2026-11-18.
+        var m3 = PortIT.Engine.Readers.Source2k.Load(args[1], null);
+        var sw3 = System.Diagnostics.Stopwatch.StartNew();
+        var sc3 = PortIT.Engine.Port.SourceScene.Build(m3);
+        Console.WriteLine($"scene built in {sw3.ElapsedMilliseconds} ms: {sc3.Parts.Count} pieces, {sc3.Verts:N0} points, {sc3.Tris:N0} triangles");
+        for (int k3 = 0; k3 < 3; k3++)
+        {
+            var tD = System.Diagnostics.Stopwatch.StartNew();
+            foreach (var p3 in sc3.Parts) p3.Hidden = k3 == 2 && p3.Name.Contains("Outfit", StringComparison.OrdinalIgnoreCase);
+            PortIT.Engine.Port.Preview.DrawScene(sc3, args[2] + "_panels" + k3 + ".png", "");
+            Console.WriteLine($"  redraw with the model kept ({(k3 == 2 ? "one piece hidden" : "all pieces")}): {tD.ElapsedMilliseconds} ms");
+        }
+        foreach (var p3 in sc3.Parts) p3.Hidden = false;
+        foreach (var (nm, cam3) in new[]
+                 {
+                     ("front", new PortIT.Engine.Port.Viewer3D.Camera()),
+                     ("turned", new PortIT.Engine.Port.Viewer3D.Camera { Yaw = 0.9, Pitch = 0.25 }),
+                     ("head", new PortIT.Engine.Port.Viewer3D.Camera { Yaw = 0.35, Zoom = 4.5, PanY = 900 * 0.92 * 4.5 * 0.42 }),
+                 })
+        {
+            var t3 = System.Diagnostics.Stopwatch.StartNew();
+            var bgra = PortIT.Engine.Port.Viewer3D.Draw(sc3, 900, 900, cam3);
+            var im3 = new Img(900, 900, 3);
+            for (int i = 0; i < 900 * 900; i++) { im3.Px[3 * i] = bgra[4 * i + 2]; im3.Px[3 * i + 1] = bgra[4 * i + 1]; im3.Px[3 * i + 2] = bgra[4 * i]; }
+            ImageIO.SavePng(im3, $"{args[2]}_{nm}.png");
+            Console.WriteLine($"  {nm}: {t3.ElapsedMilliseconds} ms");
+        }
+        ok++;
+        break;
+    }
+    case "srcpreview":
+    {
+        // (args: wrestler folder, out.png, then any of: keep=A,B  hide=A,B  hl=NAME  lod=N) - the SOURCE preview
+        // exactly as the app draws it. 2026-11-18.
+        var sp = PortIT.Engine.Readers.Source2k.Load(args[1], null);
+        string? hl = null, hide = null; int slod = 1;
+        foreach (var a in args.Skip(3))
+        {
+            if (a.StartsWith("hl=")) hl = a[3..];
+            else if (a.StartsWith("hide=")) hide = a[5..];
+            else if (a.StartsWith("lod=")) slod = int.Parse(a[4..]);
+            else if (a.StartsWith("keep="))
+            {
+                var keep = a[5..].Split(',').Select(x => x.Trim().ToLowerInvariant()).ToHashSet();
+                sp = new PortIT.Engine.Readers.SourceAew.Model { Game = sp.Game, Name = sp.Name, Bones = sp.Bones, Female = sp.Female, Attire = sp.Attire,
+                                                                 Attires = sp.Attires, Meshes = sp.Meshes.Where(m2 => keep.Contains(m2.Material.ToLowerInvariant())).ToList() };
+            }
+        }
+        Console.WriteLine(PortIT.Engine.Port.Preview.RenderSource(sp, args[2], lod: slod, title: "", highlight: hl,
+                                                                 hide: hide?.Split(',')) ?? "nothing drawn");
+        ok++;
+        break;
+    }
+    case "srcmeshes":
+    {
+        // (args: a 2K26/AEW wrestler folder [attire]) - every mesh as the SOURCE PREVIEW sees it: is it drawn at all
+        // (variant), what kind it is, which maps it found, and - for hair - what the cut-out map and the vertex colour
+        // it is painted with actually hold. Added for "Zaria ports with no hair", 2026-11-18.
+        var srcm = PortIT.Engine.Readers.Source2k.Load(args[1], args.Length > 2 ? args[2] : null);
+        Console.WriteLine($"{srcm.Name}: {srcm.Meshes.Count} meshes, female {srcm.Female}, attire {srcm.Attire}");
+        var lodsOf = new Dictionary<string, List<List<Mcd.LodMesh>>>();
+        foreach (var me in srcm.Meshes)
+        {
+            // the preview draws LOD 1, not LOD 0 (Preview.RenderSource, lod: 1)
+            if (me.SourcePath != null)
+            {
+                if (!lodsOf.TryGetValue(me.SourcePath, out var L))
+                {
+                    try { L = Mcd.Load(me.SourcePath).Lods; } catch (Exception) { L = []; }
+                    lodsOf[me.SourcePath] = L;
+                }
+                var per = new List<string>();
+                for (int li = 0; li < L.Count; li++)
+                {
+                    var row = L[li].FirstOrDefault(r2 => r2.Mesh == me.Index);
+                    per.Add($"lod{li} {(row == null ? "-" : (row.Triangles.Length / 3).ToString())}");
+                }
+                Console.WriteLine($"  [{me.Material}] {string.Join("  ", per)}");
+            }
+            string maps = string.Join(",", me.Textures.Select(kv => kv.Key + "=" + Path.GetFileName(kv.Value)).Order(StringComparer.Ordinal));
+            Console.WriteLine($"  {me.Material,-16} name {me.Name,-14} kind {me.Kind,-5} variant {me.Variant,-5} cutout {me.Cutout,-5} verts {me.N,6} tris {me.Tris.Length / 3,6}  [{maps}]");
+            if (me.Kind != "hair") continue;
+            if (me.Colors == null || me.Colors.Length == 0) Console.WriteLine("        NO vertex colours - it would be painted the fallback near-black");
+            else
+            {
+                var med = new double[3];
+                for (int k = 0; k < 3; k++)
+                {
+                    var v = Enumerable.Range(0, me.Colors.Length / me.ColorC).Select(i => me.Colors[me.ColorC * i + k]).Order().ToArray();
+                    med[k] = v.Length % 2 == 1 ? v[v.Length / 2] : (v[v.Length / 2 - 1] + v[v.Length / 2]) / 2;
+                }
+                Console.WriteLine($"        vertex colour median (linear) {med[0]:F3} {med[1]:F3} {med[2]:F3}  -> painted {(int)(255 * SrgbOf(med[0]))} {(int)(255 * SrgbOf(med[1]))} {(int)(255 * SrgbOf(med[2]))}");
+            }
+            foreach (var role in new[] { "color", "rai" })
+                if (me.Textures.TryGetValue(role, out var tp))
+                {
+                    var im = ImageIO.Load(tp).ToRgba();
+                    int ch = role == "rai" ? 1 : 3, n = im.W * im.H, over = 0; long sum = 0;
+                    for (int i = 0; i < n; i++) { sum += im.Px[4 * i + ch]; if (im.Px[4 * i + ch] > 110) over++; }
+                    Console.WriteLine($"        {role} {Path.GetFileName(tp)} {im.W}x{im.H}: channel {ch} mean {sum / (double)n:F1}, {100.0 * over / n:F1}% over 110 (the preview draws only there)");
+                }
+                else Console.WriteLine($"        no {role} map");
+        }
+        ok++;
+        break;
+    }
+    case "textures":
+        // (args: a folder of chNNNNN.pac files, or one pac) - which meshes lose their colour map
+        return PortIT.Check.Doctor.Textures(args[1]);
+    case "chpac":
+        // (args: a SvR chNNN.pac) - its entries, their parts, and which could be a port template
+        return PortIT.Check.Doctor.ChPac(args[1]);
+    case "batch":
+        // (args: a folder of port runs, each with request.json / response.json) - what went wrong, counted
+        return PortIT.Check.Doctor.Batch(args[1]);
     default:
         Console.WriteLine("unknown check: " + args[0]);
         return 2;

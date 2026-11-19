@@ -100,7 +100,7 @@ public static class Source2k
         foreach (var me in meshes)
         {
             string n = me.Material.ToLowerInvariant();
-            me.Variant = names.Any(o => n != o && n.StartsWith(o + "_"));
+            me.Variant = names.Any(o => n != o && n.StartsWith(o + "_") && !Port.RockFbx.SideTwin(n, o));   // (M_EYE_R is the other eye, not an alternate - Kane 2008)
             if (n.StartsWith("s_") && names.Contains("m_" + n[2..])) me.Variant = true;
             if (n.Contains("eyeshadow") || new[] { "m_lambert", "m_polysurface", "lambert", "polysurface" }.Any(n.StartsWith)) me.Variant = true;
         }

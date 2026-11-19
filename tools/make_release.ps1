@@ -9,6 +9,14 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 [xml]$proj = Get-Content (Join-Path $root 'app\PortIT.csproj')
 $version = $proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+# nothing secret may go out: webhooks, tokens, keys, passwords, personal folders, the relay's address (2026-11-19)
+Push-Location $root
+python -I (Join-Path $root 'tools\secret_scan.py')
+$scan = $LASTEXITCODE
+Pop-Location
+if ($scan) { throw 'secret_scan found something that must not be published - see above' }
+# the official build needs the relay baked in, or Report and Suggest would not work for anyone
+if (-not (Test-Path (Join-Path $root 'app\relay.local.txt'))) { throw 'app\relay.local.txt is missing: the Report and Suggest buttons would not work in this release' }
 $name = "PortIT-$version-win-x64"
 $rel = Join-Path $root 'release'
 $dist = Join-Path $rel $name

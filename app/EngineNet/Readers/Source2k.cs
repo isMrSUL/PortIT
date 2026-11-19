@@ -102,6 +102,9 @@ public sealed class Source2kTextures
                 string s = Path.GetFileNameWithoutExtension(p).ToLowerInvariant();
                 // (topsx_color, headx_color...: mods that name their maps with an extra x - the preview showed them white)
                 if (new[] { stem, alt }.Any(n => !string.IsNullOrEmpty(n) && (s.StartsWith(n.ToLowerInvariant() + "_") || s.StartsWith(n.ToLowerInvariant() + "x_")))) o.TryAdd(RoleOf(p), p);
+                // (one side of a pair - eye_l -> l_eye_color: Kane 2008's eyes, 2026-11-19)
+                else if (System.Text.RegularExpressions.Regex.Match(stem, "^(.+)_([lr])$") is { Success: true } sd
+                         && s.StartsWith(sd.Groups[2].Value + "_" + sd.Groups[1].Value + "_")) o[RoleOf(p)] = p;
             }
         return o;
     }

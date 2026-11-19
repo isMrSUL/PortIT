@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using PortIT.Core;
 
 namespace PortIT;
@@ -54,6 +55,7 @@ public partial class MainWindow
     {
         foreach (var o in new[] { ring, entrance }) { o.Meshes.Clear(); o.SourcePic = o.BuiltPic = o.BuiltTitle = null; o.Attire = null; o.Verts = 0; }
         autoOff.Clear();
+        ForgetScene();
         ringInspect = null;
         onEntrance = false;
         SyncOutfitUi();
@@ -96,7 +98,16 @@ public partial class MainWindow
                 ? plain.Where(b => mat.StartsWith(b + "_", StringComparison.OrdinalIgnoreCase)).OrderByDescending(b => b.Length).FirstOrDefault() : null;
             bool canRemove = baseOf != null || (!variant && kind is "gear" or "hair");
             string label = baseOf != null ? kind + " · alternate" : variant ? kind + " · left out" : kind;
-            o.Meshes.Add(new MeshItem(mat, label, $"{v,6:N0} verts   {tex}", canRemove, baseOf) { Keep = !variant });
+            // (a greyed tick box that does nothing when clicked reads as "the Meshes section is broken" - and with
+            //  M_Hair, S_Hair, M_Hair_ENT and S_Hair_ENT the list shows FOUR rows called Hair, only one of which comes
+            //  off. So every row that has no tick box now says why, right under its name. 2026-11-18)
+            string? why = canRemove ? null
+                : variant ? "the game does not use this copy - it is already left out"
+                : kind is "head" or "skin" ? "the body itself - it cannot be left out"
+                : kind == "eye" ? "the eyes - they cannot be left out"
+                : kind == "lash" ? "the eyelashes - they cannot be left out"
+                : "part of the wrestler, not gear - it cannot be left out";
+            o.Meshes.Add(new MeshItem(mat, label, $"{v,6:N0} verts   {tex}", canRemove, baseOf, why) { Keep = !variant });
         }
         o.Verts = verts;
         if (entranceDefaults)        // (2K's own entrance pieces: used, their everyday ones not)
@@ -105,7 +116,23 @@ public partial class MainWindow
                 alt.Keep = true;
                 foreach (var b in o.Meshes.Where(x => x.Name.Equals(alt.Base, StringComparison.OrdinalIgnoreCase))) b.Keep = false;
             }
-        foreach (var it in o.Meshes) it.KeepChanged = x => Swap(o, x);
+        foreach (var it in o.Meshes) it.KeepChanged = x => { Swap(o, x); if (o == Current) QueuePreview(); };
+    }
+
+    int previewGen;
+
+    /// <summary>Tick or untick a piece and the picture follows by itself - no "Update preview" click (2026-11-18).
+    /// Ticking several pieces in a row only draws once: each tick cancels the one waiting.</summary>
+    void QueuePreview()
+    {
+        if (chosen == null) return;
+        int gen = ++previewGen;
+        Dispatcher.UIThread.Post(async () =>
+        {
+            try { await Task.Delay(450); } catch (Exception) { return; }
+            if (gen != previewGen || chosen == null) return;
+            await SourcePreview();
+        });
     }
 
     /// <summary>an alternate look and its base are worn one at a time: ticking one unticks the other(s)</summary>
@@ -153,9 +180,11 @@ public partial class MainWindow
             ring.SourcePic = r.TryGetProperty("preview", out var pv) && pv.ValueKind == JsonValueKind.String ? pv.GetString() : null;
             Status($"{w.Name}: {ring.Meshes.Count} meshes.");
             SourcePreviewButton.IsEnabled = true;
+            View3DButton.IsEnabled = true;           // (the 2K model can be turned in 3D before porting, 2026-11-18)
             if (HasEntrance) await PrepareEntrance(ct);
             SyncOutfitUi();
             ShowCurrent();
+            WarmScene();
         });
     }
 
@@ -212,7 +241,11 @@ public partial class MainWindow
     {
         onEntrance = entranceSide && HasEntrance;
         SyncOutfitUi();
-        if (Current.BuiltPic == null && Current.SourcePic == null && chosen != null) await SourcePreview();
+        // Always draw it again. It used to keep whatever picture that outfit had last, which is why changing the
+        // entrance outfit, or switching between ring and entrance, left the old picture on screen until "Update
+        // preview" was clicked. Drawing again is cheap now: the model is kept and only the ticks change (2026-11-18).
+        if (Current.BuiltPic != null) ShowCurrent();
+        else if (chosen != null) await SourcePreview();
         else ShowCurrent();
     }
 
@@ -224,32 +257,77 @@ public partial class MainWindow
     }
 
     // ------------------------------------------------------------------ pictures
+    /// <summary>the model this picture is drawn from, kept between draws, and what it was built for</summary>
+    PortIT.Engine.Port.Viewer3D.Scene? scene;
+    string? sceneKey;
+
+    /// <summary>Which model the kept scene belongs to. The ticks are NOT part of it: every piece, and every alternate
+    /// look, is in the scene and simply hidden or shown - so ticking a box, switching outfit or choosing another
+    /// entrance outfit costs a redraw (about a third of a second) instead of reading and decoding the whole model
+    /// again (over two seconds). That is what made "Update preview" feel necessary.</summary>
+    string SceneKey(Outfit o) => Source + "|" + (chosen?.Id ?? "") + "|" + (o == entrance && o.Attire != null ? o.Attire : AttireBox.SelectedItem as string ?? "");
+
+    public void ForgetScene() { scene = null; sceneKey = null; }
+
+    /// <summary>Read the model in the background as soon as a wrestler is chosen, so the FIRST tick or outfit change is
+    /// as quick as the ones after it. Nothing on screen changes; if it fails, the next draw simply reads it then.</summary>
+    void WarmScene()
+    {
+        if (chosen == null) return;
+        string key = SceneKey(ring);
+        if (scene != null && sceneKey == key) return;
+        var req = Request("source_preview");
+        req["leave_out"] = Array.Empty<string>();
+        req["use"] = ring.Meshes.Where(m => m.Base != null).Select(m => m.Name).Distinct().ToArray();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var s = await Core.Engine.SourceScene(req, CancellationToken.None);
+                Dispatcher.UIThread.Post(() => { if (scene == null && SceneKey(ring) == key) { scene = s; sceneKey = key; } });
+            }
+            catch (Exception) { }
+        });
+    }
+
     /// <summary>the outfit drawn again with its ticks - before porting; highlight: one mesh in orange ("Show")</summary>
     async Task SourcePreview(string? highlight = null)
     {
         if (chosen == null) return;
         var w = chosen;
         var o = Current;
+        string key = SceneKey(o);
+        // a piece left out is still drawn when it is the one being shown in orange
+        var hide = LeaveOut(o).Where(n => highlight == null || !n.Equals(highlight, StringComparison.OrdinalIgnoreCase))
+                              .ToHashSet(StringComparer.OrdinalIgnoreCase);
         await Work(highlight != null ? $"Showing {MeshNames.Friendly(highlight)}…" : $"Drawing {w.Name}…", async ct =>
         {
-            var req = Request("source_preview");
-            if (o == entrance && o.Attire != null) req["attire"] = o.Attire;
-            req["leave_out"] = LeaveOut(o);
-            req["use"] = Use(o);
-            if (highlight != null)
+            if (scene == null || sceneKey != key)
             {
-                req["highlight"] = highlight;
-                // (a piece left out is drawn for the look all the same)
-                req["leave_out"] = LeaveOut(o).Where(n => !n.Equals(highlight, StringComparison.OrdinalIgnoreCase)).ToArray();
-                if (o.Meshes.FirstOrDefault(m => m.Name == highlight)?.Base != null) req["use"] = Use(o).Append(highlight).ToArray();
+                var req = Request("source_preview");
+                if (o == entrance && o.Attire != null) req["attire"] = o.Attire;
+                req["leave_out"] = Array.Empty<string>();
+                // every alternate look is built, so ticking one is only a change of what is hidden
+                req["use"] = o.Meshes.Where(m => m.Base != null).Select(m => m.Name).Distinct().ToArray();
+                scene = await Core.Engine.SourceScene(req, ct);
+                sceneKey = key;
             }
-            var r = await Core.Engine.Run(python, req, null, ct);
-            if (r.TryGetProperty("preview", out var pv) && pv.ValueKind == JsonValueKind.String)
+            var s = scene;
+            foreach (var p in s.Parts)
             {
-                if (highlight == null) { o.SourcePic = pv.GetString(); o.BuiltPic = null; }
-                ShowPreview(pv.GetString(), $"{w.Name}  ·  {OutfitName}" + (highlight != null ? $"  ·  {MeshNames.Friendly(highlight)} in orange" : "  (before porting, your edit)"));
+                p.Hidden = hide.Contains(p.Name);
+                p.Highlight = highlight != null && string.Equals(p.Name, highlight, StringComparison.OrdinalIgnoreCase);
             }
-            Status(highlight != null ? $"{MeshNames.Friendly(highlight)} ({highlight}) is shown in orange." : $"{w.Name}: preview updated.");
+            // one file per outfit, written over each time. With a new name per draw the folder filled up with a
+            // megabyte-sized picture for every tick (the picture is drawn again several times a minute now).
+            // ShowPreview decodes the file and lets go of it, so writing over it is safe.
+            string outPath = System.IO.Path.Combine(PortIT.Engine.Worker.Previews,
+                                                    highlight != null ? "view_show.png" : o == entrance ? "view_entrance.png" : "view_ring.png");
+            await Task.Run(() => PortIT.Engine.Port.Preview.DrawScene(s, outPath, ""), ct);
+            ct.ThrowIfCancellationRequested();
+            if (highlight == null) { o.SourcePic = outPath; o.BuiltPic = null; }
+            ShowPreview(outPath, $"{w.Name}  ·  {OutfitName}" + (highlight != null ? $"  ·  {MeshNames.Friendly(highlight)} in orange" : "  (before porting, your edit)"));
+            Status(highlight != null ? $"{MeshNames.Friendly(highlight)} ({highlight}) is shown in orange." : $"{w.Name}: picture updated.");
         });
     }
 

@@ -121,12 +121,30 @@ public sealed class HairSim
             for (int i = 0; i < n; i++) m.Index.TryAdd(nodes[i].Name, i);
             models[id] = m;
         }
-        hairModel = models.Keys.FirstOrDefault(k => models[k].Index.Keys.Any(x => x.StartsWith("kami_b")), -1);
+        // Which model holds the chains? NOT simply "the first one with a kami_b bone": the body model carries
+        // leftover kami_b bones from the stock template whenever the port is built on a superstar who has hair
+        // chains of his own (a port on McCool had kami_b13* in child 0), and picking that one found no chain at
+        // all - the 3D view's hair test stayed greyed out for every such port (user report 2026-11-17).
+        // So: pick the model that holds the ROOTS the settings file actually names.
+        var want = (settings ?? "").Split('\n')
+            .Select(l => l.Split(';')[0].Split([' ', '\t', '\r'], StringSplitOptions.RemoveEmptyEntries))
+            .Where(t => t.Length >= 10).Select(t => t[0]).ToHashSet();
+        int bestId = -1, bestHit = 0;
+        foreach (var (id, mm) in models)
+        {
+            int hit = mm.Index.Keys.Count(want.Contains);
+            if (hit > bestHit || (hit == bestHit && hit > 0 && id == 0x2710)) { bestHit = hit; bestId = id; }
+        }
+        hairModel = bestId;
+        if (Environment.GetEnvironmentVariable("PORTIT_HAIRDEBUG") == "1")
+            Console.WriteLine($"[hairsim] models {string.Join(",", models.Keys.Select(k => k.ToString("x")))}, hairModel {hairModel:x} with {bestHit} of {want.Count} roots");
         if (hairModel < 0 || settings == null) return;
         var hm = models[hairModel];
         foreach (var line in settings.Split('\n'))
         {
             var tk = line.Split(';')[0].Split([' ', '\t', '\r'], StringSplitOptions.RemoveEmptyEntries);
+            if (Environment.GetEnvironmentVariable("PORTIT_HAIRDEBUG") == "1" && tk.Length > 0 && (tk.Length < 10 || !hm.Index.ContainsKey(tk[0])))
+                Console.WriteLine($"[hairsim] left out '{tk[0]}': {tk.Length} values, in the model: {hm.Index.ContainsKey(tk[0])}");
             if (tk.Length < 10 || !hm.Index.TryGetValue(tk[0], out int root)) continue;
             double F(int i) => double.Parse(tk[i], System.Globalization.CultureInfo.InvariantCulture);
             var c = new Chain { Radius = F(1), Visc = F(2), Grav = F(3), Spring = F(4), Damp = F(5), A = (int)F(6), Bend = F(8), Move = F(9), Parent = hm.Parent[root] };

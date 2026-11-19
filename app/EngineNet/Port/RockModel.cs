@@ -166,11 +166,14 @@ public sealed class RockModel
         for (int i = 0; i < bones.Count; i++) idx[bones[i].Src] = i;
         var tw = tmplWorld.ToDictionary(kv => kv.Key, kv => new[] { origin[0] + 10.0 * kv.Value[0], origin[1] + 10.0 * kv.Value[1], origin[2] + 10.0 * kv.Value[2] });
         var M = new double[bones.Count][];
-        for (int i = 0; i < bones.Count; i++)
+        // A bone is placed after the one it hangs from, and most models store them that way, so this
+        // used to walk them in order and give up ("parents first") on one that did not. A 2K19 pack
+        // need not: Solo Sikoa's has a bone whose parent is stored after it, and his port stopped dead
+        // (2026-11-17). The order is worked out now; only a bone that is its own ancestor is refused.
+        foreach (int i in ParentsFirst(bones))
         {
             var b = bones[i];
-            int? p = b.Parent;
-            if (p != null && p >= i) throw new InvalidDataException("parents first");
+            int? p = Par(bones, i);
             var Mp = p != null ? M[p.Value] : T4();
             M[i] = Mp;
             string name = b.Src;
@@ -229,6 +232,32 @@ public sealed class RockModel
             }
         }
         return M.ToList();
+    }
+
+    /// <summary>a bone's parent, or null when it has none (or names one that is not there)</summary>
+    static int? Par(List<RockFbx.Bone> bones, int i)
+    {
+        int? p = bones[i].Parent;
+        return p != null && p.Value >= 0 && p.Value < bones.Count && p.Value != i ? p : null;
+    }
+
+    /// <summary>the bones in an order where every one comes after the bone it hangs from</summary>
+    public static List<int> ParentsFirst(List<RockFbx.Bone> bones)
+    {
+        var order = new List<int>(bones.Count);
+        var state = new byte[bones.Count];          // 0 not seen, 1 on the way down, 2 placed
+        void Walk(int i)
+        {
+            if (state[i] == 2) return;
+            if (state[i] == 1)
+                throw new InvalidDataException($"the model's bones run in a circle at {bones[i].Src}: it hangs from itself");
+            state[i] = 1;
+            if (Par(bones, i) is int p) Walk(p);
+            state[i] = 2;
+            order.Add(i);
+        }
+        for (int i = 0; i < bones.Count; i++) Walk(i);
+        return order;
     }
 
     /// <summary>linear blend skinning: per bone (the weights' order) w (V @ L.T + t) and the normals through inv(L)</summary>
@@ -417,10 +446,31 @@ public sealed class RockModel
         if (cm.TryGetValue(bas.ToLowerInvariant(), out var cmap) && cmap.EndsWith("_color", StringComparison.OrdinalIgnoreCase)
             && Search(cmap[..^"_color".Length] + suffix) is { } viaMtls) return viaMtls;
         if (Search(bas + "x" + suffix) is { } xHit) return xHit;
+        // (one side of a pair - eye_l: also l_eye_color, then the shared eye_color. Kane 2008's eyes are l_eye_color
+        //  and r_eye_color, and neither was found: his left eye came out a blank white, 2026-11-19)
+        var sideOf = Regex.Match(bas, "^(.+)_([lr])$", RegexOptions.IgnoreCase);
+        if (sideOf.Success)
+        {
+            if (Search(sideOf.Groups[2].Value + "_" + sideOf.Groups[1].Value + suffix) is { } swapped) return swapped;
+            if (Search(sideOf.Groups[1].Value + suffix) is { } shared) return shared;
+        }
         var a = Fbx.TexAlias.GetValueOrDefault(bas.ToLowerInvariant())?.GetValueOrDefault(suffix);
         if (a != null && File.Exists(a)) return a;
         // (hair_ALPHA -> hair_color.DDS, as RockFbx.TextureFor)
         return Regex.IsMatch(bas, "(?i)_alpha$") ? FindTex(chr, attire, Regex.Replace(bas, "(?i)_alpha$", ""), suffix) : null;
+    }
+
+    /// <summary>The texture cell an eye material draws from. Both eyes normally share one picture and one cell ("eye").
+    /// When the left and right pictures differ - Kane 2008: one normal eye, one white lens - each keeps its own cell,
+    /// or both eyes would wear the same one (2026-11-19).</summary>
+    public string EyeCell(string chr, string attire, string bas)
+    {
+        // (any case: Kane 2008's right eye is "eye_R")
+        string low = bas.ToLowerInvariant();
+        if (low is not ("eye_l" or "eye_r")) return bas;
+        var l = FindTex(chr, attire, "eye_l", "_color");
+        var r = FindTex(chr, attire, "eye_r", "_color");
+        return l != null && r != null && !string.Equals(l, r, StringComparison.OrdinalIgnoreCase) ? low : "eye";
     }
 
     /// <summary>a texture fitted into a cell (gutter of edge colour): RGB and A resized apart; normal maps: x, y kept,
@@ -570,7 +620,7 @@ public sealed class RockModel
         }
 
         // eye pivots: the eyeballs' own centres where the 2K eye bones sit elsewhere
-        var eyes = meshes.Where(m => m.Name == "M_EYE").ToList();
+        var eyes = meshes.Where(m => RockFbx.IsEyeMesh(m.Name)).ToList();     // (both, when the eyes are two meshes)
         if (eyes.Count > 0)
         {
             var EP = eyes.SelectMany(m => U(Skin(m.Verts, m.Normals, m.Weights, M).V)).ToArray();
@@ -782,7 +832,7 @@ public sealed class RockModel
             }
             // texture cell
             string bas = m.Material.Split(':')[0];
-            string tname = bas is "eye_l" or "eye_r" ? "eye" : bas;
+            string tname = EyeCell(chr, attire, bas);
             var cell = Cells[tname];
             var cpath = FindTex(chr, attire, tname, "_color");
             var npath = FindTex(chr, attire, tname, "_nrm");

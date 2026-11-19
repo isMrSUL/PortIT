@@ -84,11 +84,11 @@ internal static class Render
     /// star = the superstar shown</summary>
     /// <summary>the 3D view window, driven by real (headless) mouse input: open, drag to turn, wheel to zoom - a png after
     /// each step (out_1 .. out_4)</summary>
-    public static int View3D(string outPrefix, string modDir)
+    public static int View3D(string outPrefix, string modDir, double shine = 0)
     {
         AppBuilder.Configure<App>().UseSkia().WithInterFont()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
-        var w = new ViewerWindow(modDir, "test", false, false) { Width = 1000, Height = 760 };
+        var w = new ViewerWindow(modDir, "test", false, false, shine) { Width = 1000, Height = 760 };
         w.Show();
         Pump(3);
         void Shot(int n) { Pump(0.6); var f = w.CaptureRenderedFrame(); f?.Save($"{outPrefix}_{n}.png"); }

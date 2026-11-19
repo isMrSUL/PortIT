@@ -20,7 +20,7 @@ namespace PortIT.Engine;
 /// </summary>
 public sealed class Worker
 {
-    public const string Version = "1.3.4";
+    public const string Version = "1.4.0";
     public const string CakPrefix = "cak:", PacPrefix = "pac:";
     readonly Action<string> log;
     readonly CancellationToken cancel;
@@ -299,7 +299,7 @@ public sealed class Worker
         var use = (req["use"] as JsonArray ?? []).Select(n => n!.GetValue<string>().ToLowerInvariant()).ToHashSet();
         foreach (var m in src.Meshes) if (use.Contains(m.Material.ToLowerInvariant())) m.Variant = false;   // (alternates chosen: drawn)
         var view = new SourceAew.Model { Game = src.Game, Name = src.Name, Bones = src.Bones, Female = src.Female, Attire = src.Attire, Attires = src.Attires,
-                                         Meshes = src.Meshes.Where(m => !gone.Contains(m.Material.ToLowerInvariant())).ToList() };
+                                         Meshes = src.Meshes.ToList() };
         if (source == "aew") view = AewView(view);
         Directory.CreateDirectory(Previews);
         foreach (var root in new[] { Previews, Path.Combine(Previews, "aew_tex") })
@@ -309,8 +309,23 @@ public sealed class Worker
         string stem = Regex.Replace(Path.GetFileName(Str(req, "id")), "[^A-Za-z0-9_]+", "_");
         if (stem.Length > 60) stem = stem[^60..];
         string outPath = Path.Combine(Previews, $"{stem}_{DateTime.Now:HHmmss}.png");
-        try { return Preview.RenderSource(view, outPath, title: "", highlight: StrOr(req, "highlight")); }
+        try { return Preview.RenderSource(view, outPath, title: "", highlight: StrOr(req, "highlight"), hide: gone); }
         catch (Exception e) when (e is not OperationCanceledException) { log("preview: " + e.Message); return null; }
+    }
+
+    /// <summary>the SOURCE model as a 3D scene (the "3D view" button before porting) - the same meshes, ticks and
+    /// alternates the preview picture uses. 2026-11-18.</summary>
+    public Port.Viewer3D.Scene Scene3D(JsonObject req)
+    {
+        var src = LoadSource(ref req);
+        if (StrOr(req, "source") == "aew") src = AewView(src);
+        var gone = (req["leave_out"] as JsonArray ?? []).Select(n => n!.GetValue<string>().ToLowerInvariant()).ToHashSet();
+        var use = (req["use"] as JsonArray ?? []).Select(n => n!.GetValue<string>().ToLowerInvariant()).ToHashSet();
+        foreach (var m in src.Meshes) if (use.Contains(m.Material.ToLowerInvariant())) m.Variant = false;
+        var scene = Port.SourceScene.Build(src);
+        foreach (var p in scene.Parts) p.Hidden = gone.Contains(p.Name.ToLowerInvariant());
+        Port.SourceScene.Measure(scene);
+        return scene;
     }
 
     JsonObject Inspect(JsonObject req)
@@ -328,6 +343,9 @@ public sealed class Worker
             ["name"] = src.Name, ["meshes"] = meshes,
             ["attires"] = new JsonArray(src.Attires.Select(a => (JsonNode)(Path.GetFileName(Path.GetDirectoryName(a) ?? "") + "/" + Path.GetFileName(a))).ToArray()),
             ["female"] = src.Female, ["preview"] = SourcePreview(req, src),
+            // where the model actually came from, after a cak / pac id was unpacked: the 3D view opens it straight
+            // from here, without going through a command (2026-11-18)
+            ["folder"] = StrOr(req, "id") ?? "", ["attire_path"] = StrOr(req, "attire") ?? "",
         };
     }
 
@@ -481,7 +499,11 @@ public sealed class Worker
         int hd = req["hd_size"] is JsonNode hn && hn.GetValueKind() == JsonValueKind.Number ? (int)hn.GetValue<double>() : 4096;
         string modId = StrOr(req, "mod_id") is { Length: > 0 } mi ? mi : "portit_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
         log($"porting with the Rock / Brock pipeline ({(budget >= Port2k.FullBudget ? "full detail + texture pack" : $"{budget} pages")})...");
-        var p2 = new Port2k { MovingHair = Truthy(req, "moving_hair") };
+        // how wet the skin looks: the sweat mask in the colour texture's alpha (stock SvR is 77)
+        int? sweat = req["sweat"] is JsonNode swn && swn.GetValueKind() == JsonValueKind.Number ? (int)swn.GetValue<double>() : null;
+        var p2 = new Port2k { MovingHair = Truthy(req, "moving_hair"), Sweat = sweat };
+        // how much the hair swings (user request 2026-11-16): gentle / natural / loose - HairChains.Line
+        if (StrOr(req, "hair_feel") is { Length: > 0 } hf) p2.HairFeel = hf;
         var leave = (req["leave_out"] as JsonArray ?? []).Select(n => n!.GetValue<string>());
         // body type / fighting style: the stock superstar underneath (moves, entrance, stats, size) and, its own model, the body
         //  the port is posed to - all ports were Big Show's (ch125): "everyone looks like a giant", user reports 2026-11-13
@@ -538,7 +560,7 @@ public sealed class Worker
                 if (entAtt.ToLowerInvariant().EndsWith(".mcd") || entAtt.ToLowerInvariant().EndsWith(".mdl")) entAtt = Path.GetDirectoryName(entAtt) ?? "";
             }
             log($"the entrance outfit ({(entAtt == att && entId == Str(req, "id") ? "this attire" + (entLeave.Count == 0 ? " with all its gear" : "") : entAtt)})...");
-            var eres = new Port2k().Build(entId, entAtt, ework, game, budget, template: tmpl, log: log, print: log,
+            var eres = new Port2k { Sweat = sweat }.Build(entId, entAtt, ework, game, budget, template: tmpl, log: log, print: log,
                                           packPrefix: modId + "_hd_entrance", leaveOut: entLeave, bridge: entBridge, packSize: hd is 2048 or 4096 or 8192 ? hd : 4096,
                                           use: (ent["use"] as JsonArray ?? []).Select(n => n!.GetValue<string>()));
             string entry = Entrance.AddTo(res.Pac, eres.Pac);

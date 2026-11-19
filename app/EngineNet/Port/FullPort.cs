@@ -28,6 +28,24 @@ public sealed class FullPort
     /// boot's inner panel - tucking it 3 - 7 cm in left a hole, Rock 1999, 2026-11-12)</summary>
     public double SkinOverGear = double.PositiveInfinity;
     /// <summary>no skin is moved under gear hit this close (model units, 0.1 = 1 cm) to the gear's open edge</summary>
+    /// <summary>
+    /// The last tuck pass: skin that pokes out of the gear in a CREASE (the groin, an armpit, behind a knee). The two
+    /// passes above look along the skin's own normal or at the nearest gear triangle in the same cell, and in a crease
+    /// the gear there faces a different way, so they never see it - a ported Cactus Jack showed two skin wedges through
+    /// the tights at the groin (user report 2026-11-17; measured 164 body points up to 3.4 cm outside the tights).
+    /// The poke is PortIT's own doing: the body and the gear are simplified apart, so a body point that sat just inside
+    /// the gear in the 2K model can end up just outside it.
+    /// The test that tells a real poke from skin that merely lies BESIDE a small piece of gear (the arm next to wrist
+    /// tape, which must not be buried) is how much gear surrounds the point: rays in 26 directions, 20 cm.
+    /// Measured on that port: through the tights 54 - 77% surrounded, beside the wrist tape 0 - 15%, beside the arm
+    /// band 0 - 38%. So: half or more.
+    /// </summary>
+    public double Surround = 0.5;
+    public double SurroundReach = 2.0;
+    public double PokeMin = 0.05;      // (0.5 cm: less is not worth moving)
+    public double PokeMax = 0.50;      // (5 cm: more is not a simplification slip, leave it alone)
+
+    public Action<string>? TuckDebug;
     public double HemCm = 1.0;   // (3 cm left the outer hip steps on Andre; 10 cm: none, no skin through Big E / Rock gear)
     static readonly string[] NotGearPrefix = ["M_Body", "M_Head", "M_EYE", "M_TransB", "M_transB", "M_MouthBag", "mouth_", "M_AEWMouth", "M_InnerMouth", "M_Teeth", "M_Tongue"];
 
@@ -577,10 +595,16 @@ public sealed class FullPort
         var e1 = new double[3 * ntr]; var e2 = new double[3 * ntr];
         for (int i = 0; i < 3 * ntr; i++) { e1[i] = B[i] - A[i]; e2[i] = C[i] - A[i]; }
         var ecount = new Dictionary<(int, int), int>();
+        var eshare = new Dictionary<(int, int), List<int>>();     // (edge -> the triangles on it: for the pseudo-normal below)
         (int, int) Ek(int a, int b) => a < b ? (a, b) : (b, a);
         for (int t = 0; t < ntr; t++)
             foreach (var (a, b) in new[] { (0, 1), (1, 2), (2, 0) })
-            { var k = Ek(TI[3 * t + a], TI[3 * t + b]); ecount[k] = ecount.GetValueOrDefault(k) + 1; }
+            {
+                var k = Ek(TI[3 * t + a], TI[3 * t + b]);
+                ecount[k] = ecount.GetValueOrDefault(k) + 1;
+                if (!eshare.TryGetValue(k, out var sl)) eshare[k] = sl = [];
+                sl.Add(t);
+            }
         var triOpen = new bool[ntr, 3];
         for (int t = 0; t < ntr; t++)
         {
@@ -635,7 +659,7 @@ public sealed class FullPort
                 double len = Math.Max(Norm3Seq(N[3 * v], N[3 * v + 1], N[3 * v + 2]), 1e-12);
                 for (int c = 0; c < 3; c++) N[3 * v + c] = outSign * N[3 * v + c] / len;
             }
-            int moved = 0;
+            int moved = 0, creased = 0;
             var keys = Enumerable.Range(0, np_).Select(v => Key(P, v)).ToArray();
             for (int v = 0; v < np_; v++)
             {
@@ -710,20 +734,109 @@ public sealed class FullPort
                     double dd = Norm3Seq(q[3 * r] - pv[0], q[3 * r + 1] - pv[1], q[3 * r + 2] - pv[2]);
                     if (dd < db) { db = dd; kb = r; }
                 }
+                double sdbg = Blas.Dot(new[] { pv[0] - q[3 * kb], pv[1] - q[3 * kb + 1], pv[2] - q[3 * kb + 2] }, new[] { GN[3 * c2[kb]], GN[3 * c2[kb] + 1], GN[3 * c2[kb] + 2] });
+                if (TuckDebug != null && sdbg > 0.05)
+                {
+                    string rsn = db > 0.30 ? "gear more than 3 cm away"
+                               : edge[kb] >= 0 && triOpen[c2[kb], edge[kb]] ? "closest point on an open edge"
+                               : HemDist(q[3 * kb], q[3 * kb + 1], q[3 * kb + 2], cl) < HemCm ? "within HemCm of an open edge"
+                               : !(-margin < sdbg && sdbg < (isHead ? 0.35 : 0.15)) ? $"sticks out {sdbg:F3} - over the {(isHead ? 0.35 : 0.15)} cap"
+                               : "TUCKED";
+                    TuckDebug($"{Name(m)} ({pv[0]:F2},{pv[1]:F2},{pv[2]:F2}) out {sdbg:F3} near {db:F3}: {rsn}");
+                }
                 if (db > 0.30 || (edge[kb] >= 0 && triOpen[c2[kb], edge[kb]])) continue;
                 if (HemDist(q[3 * kb], q[3 * kb + 1], q[3 * kb + 2], cl) < HemCm) continue;   // (by a hem: as above)
-                double sd = Blas.Dot(new[] { pv[0] - q[3 * kb], pv[1] - q[3 * kb + 1], pv[2] - q[3 * kb + 2] }, new[] { GN[3 * c2[kb]], GN[3 * c2[kb] + 1], GN[3 * c2[kb] + 2] });
+                double sd = sdbg;
                 if (-margin < sd && sd < (isHead ? 0.35 : 0.15))
                 {
                     for (int c = 0; c < 3; c++) P[3 * v + c] -= GN[3 * c2[kb] + c] * (sd + margin);
                     moved++;
                 }
             }
+            // ---- the crease pass (see Surround): skin still poking out where the gear wraps round it
+            if (!isHead && Surround > 0)
+            {
+                double cap = Math.Min(PokeMax, SkinOverGear);
+                var dirs = new List<double[]>();
+                for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++) for (int z = -1; z <= 1; z++)
+                    if (x != 0 || y != 0 || z != 0)
+                    {
+                        double l = Math.Sqrt(x * x + y * y + z * z);
+                        dirs.Add([x / l, y / l, z / l]);
+                    }
+                keys = Enumerable.Range(0, np_).Select(v => Key(P, v)).ToArray();
+                for (int v = 0; v < np_; v++)
+                {
+                    double[] pv = [P[3 * v], P[3 * v + 1], P[3 * v + 2]];
+                    if (!grid.TryGetValue(keys[v], out var cl)) continue;
+                    // (NOT the same-facing test the passes above use: in a crease the gear beside the skin faces
+                    //  sideways - that test is exactly why the groin was never seen. The surround test below is what
+                    //  keeps this honest, and the gear has to be within the cap anyway.)
+                    var c2 = cl.ToArray();
+                    if (c2.Length == 0) continue;
+                    var (q, edge) = ClosestOn(pv, A, B, C, c2);
+                    int kb = 0; double db = double.PositiveInfinity;
+                    for (int r = 0; r < c2.Length; r++)
+                    {
+                        double dd = Norm3Seq(q[3 * r] - pv[0], q[3 * r + 1] - pv[1], q[3 * r + 2] - pv[2]);
+                        if (dd < db) { db = dd; kb = r; }
+                    }
+                    // The closest point of a crease sits on a triangle EDGE, and there one triangle's own normal does
+                    // not say which side you are on - the groin wedges were at the tights' inner silhouette, where the
+                    // nearest triangle lies almost edge-on. The angle-weighted pseudo-normal (here: the normals of the
+                    // triangles that share that edge) is the right one to measure and to push along.
+                    double[] pn = [GN[3 * c2[kb]], GN[3 * c2[kb] + 1], GN[3 * c2[kb] + 2]];
+                    if (edge[kb] >= 0)
+                    {
+                        int tt = c2[kb], e = edge[kb];
+                        var ek = Ek(TI[3 * tt + e], TI[3 * tt + (e + 1) % 3]);
+                        if (eshare.TryGetValue(ek, out var sl) && sl.Count > 1)
+                        {
+                            double[] acc = [0, 0, 0];
+                            foreach (int t2 in sl) for (int c = 0; c < 3; c++) acc[c] += GN[3 * t2 + c];
+                            double al = Blas.Norm(acc);
+                            if (al > 1e-9) pn = [acc[0] / al, acc[1] / al, acc[2] / al];
+                        }
+                    }
+                    double sd = Blas.Dot(new[] { pv[0] - q[3 * kb], pv[1] - q[3 * kb + 1], pv[2] - q[3 * kb + 2] }, pn);
+                    if (db > cap || sd < PokeMin) continue;
+                    if (sd > cap) { TuckDebug?.Invoke($"{Name(m)} ({pv[0]:F2},{pv[1]:F2},{pv[2]:F2}) out {sd:F3}: crease pass - over the {cap:F2} cap"); continue; }
+                    // how much gear is round this point?
+                    int hit = 0;
+                    foreach (var dv2 in dirs)
+                    {
+                        bool any = false;
+                        foreach (int i in cl)
+                        {
+                            int ii = 3 * i;
+                            var h2 = Cross(dv2, 0, e2, ii);
+                            double a2 = Ein(e1, ii, h2, 0);
+                            if (Math.Abs(a2) < 1e-12) continue;
+                            double f2 = 1.0 / a2;
+                            double[] s2 = [pv[0] - A[ii], pv[1] - A[ii + 1], pv[2] - A[ii + 2]];
+                            double u2 = f2 * Ein(s2, 0, h2, 0);
+                            var q2 = Cross(s2, 0, e1, ii);
+                            double w2 = f2 * RowDot(q2, 0, dv2);
+                            if (u2 < -1e-6 || w2 < -1e-6 || u2 + w2 > 1 + 1e-6) continue;
+                            double t2 = f2 * Ein(e2, ii, q2, 0);
+                            if (t2 > 0 && t2 < SurroundReach) { any = true; break; }
+                        }
+                        if (any) hit++;
+                    }
+                    if ((double)hit / dirs.Count < Surround) { TuckDebug?.Invoke($"{Name(m)} ({pv[0]:F2},{pv[1]:F2},{pv[2]:F2}) out {sd:F3}: crease pass - only {hit}/{dirs.Count} round it"); continue; }
+                    // (onto the gear's own surface, margin below it - not just back along the normal: at a silhouette
+                    //  the two are not the same)
+                    for (int c = 0; c < 3; c++) P[3 * v + c] = q[3 * kb + c] - pn[c] * margin;
+                    moved++;
+                    creased++;
+                    TuckDebug?.Invoke($"{Name(m)} ({pv[0]:F2},{pv[1]:F2},{pv[2]:F2}) out {sd:F3}, {hit}/{dirs.Count} round it: tucked in (crease)");
+                }
+            }
             if (moved > 0)
             {
                 m["positions"] = Rows(P, 3, 6);
                 total += moved;
-                log($"{Name(m)}: {moved} vertices under the gear moved in below it");
+                log($"{Name(m)}: {moved} vertices under the gear moved in below it" + (creased > 0 ? $" ({creased} of them poking out in a crease)" : ""));
             }
         }
         return total;

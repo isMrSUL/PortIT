@@ -261,5 +261,83 @@
     <Style Selector="GridSplitter">
       <Setter Property="Background" Value="Transparent" />
     </Style>
+
+    <!-- ===== the 2026-11-18 overhaul ===== -->
+
+    <!-- a settings group: a quiet header you can fold away, so sixteen boxes are not all shouting at once -->
+    <Style Selector="Expander.grp">
+      <Setter Property="Background" Value="#131822" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Expander.grp /template/ ToggleButton">
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource Dim}" />
+    </Style>
+    <Style Selector="Expander.grp:expanded /template/ ToggleButton">
+      <Setter Property="Foreground" Value="{StaticResource Text}" />
+    </Style>
+    <Style Selector="Expander.grp /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Margin" Value="12,2,12,12" />
+    </Style>
+
+    <!-- a thin divider over the action buttons -->
+    <Style Selector="Border.bar2">
+      <Setter Property="Height" Value="1" />
+      <Setter Property="Background" Value="{StaticResource Line}" />
+      <Setter Property="Margin" Value="0,0,0,3" />
+    </Style>
+
+    <!-- the one button that matters, made bigger than the rest -->
+    <Style Selector="Button.big">
+      <Setter Property="MinHeight" Value="40" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <!-- header buttons: there to be found, not to be stared at -->
+    <Style Selector="Button.quiet /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{StaticResource Line}" />
+    </Style>
+    <Style Selector="Button.quiet">
+      <Setter Property="Foreground" Value="{StaticResource Dim}" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="Button.quiet:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource Text}" />
+    </Style>
+    <!-- a button sitting inside a field box (Browse at the end of the game folder) -->
+    <Style Selector="Button.inline /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.inline">
+      <Setter Property="Foreground" Value="{StaticResource AccentHi}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Padding" Value="10,4" />
+    </Style>
+
+    <!-- tabs under the picture: a line under the chosen one, no boxes -->
+    <Style Selector="TabControl.flat">
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="TabControl.flat /template/ ItemsPresenter">
+      <Setter Property="Margin" Value="13,8,13,0" />
+    </Style>
+    <Style Selector="TabControl.flat TabItem">
+      <Setter Property="Foreground" Value="{StaticResource Faint}" />
+      <Setter Property="Padding" Value="2,4" />
+      <Setter Property="Margin" Value="0,0,18,0" />
+      <Setter Property="MinHeight" Value="28" />
+    </Style>
+    <Style Selector="TabControl.flat TabItem:selected">
+      <Setter Property="Foreground" Value="{StaticResource Text}" />
+    </Style>
   </Application.Styles>
 </Application>

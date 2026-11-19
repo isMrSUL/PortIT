@@ -23,9 +23,9 @@ public partial class MainWindow : Window
     /// the port, the skin under them kept)</summary>
     public sealed class MeshItem : System.ComponentModel.INotifyPropertyChanged
     {
-        public MeshItem(string name, string kind, string detail, bool canRemove, string? baseOf = null)
+        public MeshItem(string name, string kind, string detail, bool canRemove, string? baseOf = null, string? why = null)
         {
-            Name = name; Kind = kind; Detail = detail; CanRemove = canRemove; Base = baseOf; Label = MeshNames.Friendly(name);
+            Name = name; Kind = kind; Detail = detail; CanRemove = canRemove; Base = baseOf; Why = why; Label = MeshNames.Friendly(name);
         }
         public string Name { get; }
         /// <summary>the name in plain words (Left knee pad)</summary>
@@ -35,7 +35,13 @@ public partial class MainWindow : Window
         public bool CanRemove { get; }
         /// <summary>an alternate look of another mesh (M_Hair_Entrance of M_Hair): ticked, it is used instead of that one</summary>
         public string? Base { get; }
-        public string TickTip => Base != null ? $"An alternate look of {MeshNames.Friendly(Base)}: tick to use it instead"
+        /// <summary>why this one has no tick box (a greyed box that does nothing looked like a broken Meshes list -
+        /// several rows are all called "Hair" and only one of them can come off, 2026-11-18)</summary>
+        public string? Why { get; }
+        /// <summary>the small grey line under the name: the real mesh name, and the reason when it cannot come off</summary>
+        public string SubText => Why == null ? Name : Name + "   -   " + Why;
+        public string TickTip => Why != null ? Why
+                               : Base != null ? $"An alternate look of {MeshNames.Friendly(Base)}: tick to use it instead"
                                               : "Untick to leave this piece out of this outfit (the skin under it stays)";
         bool keep = true;
         public bool Keep
@@ -103,14 +109,118 @@ public partial class MainWindow : Window
     ObservableCollection<MeshItem> meshes => ring.Meshes;
     WrestlerItem? chosen;
     string? lastMod;
+    /// <summary>the "send this one file" zip the last port made (model + HD textures) - the Share button opens it</summary>
+    string? lastShare;
     int lastPages;
     CancellationTokenSource? cts;
     bool filling;
     readonly string python = LoadSetting("python") ?? Core.Engine.DefaultPython;
 
+    /// <summary>which wrestler the screenshot hooks pick: PORTIT_SHOT_WHO (part of a name), else the first male one -
+    /// the user guide's pictures show a male wrestler (the user's wish, 2026-11-19)</summary>
+    int ShotPick()
+    {
+        var items = WrestlerList.Items.Cast<object>().OfType<WrestlerItem>().ToList();
+        string? who = Environment.GetEnvironmentVariable("PORTIT_SHOT_WHO");
+        int i = string.IsNullOrEmpty(who) ? -1 : items.FindIndex(w => w.Name.Contains(who, StringComparison.OrdinalIgnoreCase));
+        if (i < 0) i = items.FindIndex(w => !w.Female);
+        return Math.Max(0, i);
+    }
+
     public MainWindow()
     {
         InitializeComponent();
+        // PORTIT_SHOT=<file.png>: draw the window to a picture once it is up, then close. For looking at a layout
+        // change without having to sit in front of it (2026-11-18, developers only - nothing happens without the
+        // environment variable).
+        // PORTIT_SHOTENT=<file.png>: pick the first wrestler, then change the Entrance outfit box and photograph the
+        // main window - the check that the picture follows the box on its own, with no "Update preview" (2026-11-18).
+        if (Environment.GetEnvironmentVariable("PORTIT_SHOTENT") is { Length: > 0 } shotEnt)
+            Opened += async (_, _) =>
+            {
+                try
+                {
+                    // (for the guide's picture: a source folder with no user name in it, and the whole list loaded
+                    //  from it - the app otherwise reopens whatever folder the developer used last)
+                    if (Environment.GetEnvironmentVariable("PORTIT_SHOT_SOURCE") is { Length: > 0 } shotSrc)
+                    {
+                        await Task.Delay(1500);
+                        SourceBox.Text = shotSrc;
+                        await LoadList();
+                        for (int i = 0; i < 120 && WrestlerList.ItemCount < 2; i++) await Task.Delay(500);
+                    }
+                    for (int i = 0; i < 60 && WrestlerList.ItemCount == 0; i++) await Task.Delay(500);
+                    WrestlerList.SelectedIndex = ShotPick();
+                    for (int i = 0; i < 80 && chosen == null; i++) await Task.Delay(500);
+                    await Task.Delay(6000);
+                    // (for the user guide's picture: neutral folders instead of the developer's own - setting the text
+                    //  saves nothing, only Browse and a port write the settings)
+                    if (Environment.GetEnvironmentVariable("PORTIT_SHOT_PATHS") == "1")
+                    {
+                        GameBox.Text = @"D:\Games\SvR2011";
+                        OutBox.Text = @"D:\PortIT Mods";
+                    }
+                    var before = PreviewImage.Source;
+                    if (EntranceBox.ItemCount > 1) EntranceBox.SelectedIndex = 1;      // "this attire with all its gear"
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    for (int i = 0; i < 120 && ReferenceEquals(PreviewImage.Source, before); i++) await Task.Delay(100);
+                    bool changed = !ReferenceEquals(PreviewImage.Source, before);
+                    await Task.Delay(800);
+                    using (var rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize((int)Width, (int)Height), new Avalonia.Vector(96, 96)))
+                    {
+                        rtb.Render(this);
+                        using var fs = File.Create(shotEnt);
+                        rtb.Save(fs);
+                    }
+                    File.WriteAllText(shotEnt + ".info.txt",
+                        (chosen?.Name ?? "?") + ": the picture " + (changed ? "redrew by itself after " + sw.ElapsedMilliseconds + " ms" : "DID NOT redraw"));
+                }
+                catch (Exception e) { File.WriteAllText(shotEnt + ".error.txt", e.ToString()); }
+                Close();
+            };
+        // PORTIT_SHOT3D=<file.png>: pick the first wrestler, open the 3D view and draw THAT window to a picture.
+        // Added because the 3D view came up empty and a build-only check could never have caught it (2026-11-18).
+        if (Environment.GetEnvironmentVariable("PORTIT_SHOT3D") is { Length: > 0 } shot3d)
+            Opened += async (_, _) =>
+            {
+                try
+                {
+                    for (int i = 0; i < 60 && WrestlerList.ItemCount == 0; i++) await Task.Delay(500);
+                    if (WrestlerList.ItemCount == 0) { File.WriteAllText(shot3d + ".error.txt", "no wrestlers loaded"); Close(); return; }
+                    WrestlerList.SelectedIndex = ShotPick();
+                    for (int i = 0; i < 80 && chosen == null; i++) await Task.Delay(500);
+                    await Task.Delay(3000);
+                    Open3D();
+                    await Task.Delay(1000);
+                    var vw = (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)
+                             ?.Windows.OfType<ViewerWindow>().FirstOrDefault();
+                    if (vw == null) { File.WriteAllText(shot3d + ".error.txt", "the 3D window did not open"); Close(); return; }
+                    await Task.Delay(12000);
+                    using (var rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize((int)vw.Width, (int)vw.Height), new Avalonia.Vector(96, 96)))
+                    {
+                        rtb.Render(vw);
+                        using var fs = File.Create(shot3d);
+                        rtb.Save(fs);
+                    }
+                    File.WriteAllText(shot3d + ".info.txt", "wrestler: " + (chosen?.Name ?? "?"));
+                }
+                catch (Exception e) { File.WriteAllText(shot3d + ".error.txt", e.ToString()); }
+                Close();
+            };
+        if (Environment.GetEnvironmentVariable("PORTIT_SHOT") is { Length: > 0 } shotPath)
+            Opened += async (_, _) =>
+            {
+                await Task.Delay(1500);
+                try
+                {
+                    var size = new Avalonia.PixelSize((int)Width, (int)Height);
+                    using var rtb = new Avalonia.Media.Imaging.RenderTargetBitmap(size, new Avalonia.Vector(96, 96));
+                    rtb.Render(this);
+                    using (var fs = File.Create(shotPath)) rtb.Save(fs);
+                }
+                catch (Exception e) { File.WriteAllText(shotPath + ".error.txt", e.ToString()); }
+                Close();
+            };
         WrestlerList.ItemsSource = shown;
         MeshList.ItemsSource = meshes;
         BudgetBox.ItemsSource = new[]
@@ -134,6 +244,11 @@ public partial class MainWindow : Window
         MovesBox.SelectedIndex = 0;
         PoseBox.ItemsSource = Poses;
         PoseBox.SelectedIndex = 0;
+        SweatBox.ItemsSource = Sweats;
+        SweatBox.SelectedIndex = 0;
+        HairBox.ItemsSource = Hairs;
+        HairBox.SelectedIndex = int.TryParse(LoadSetting("hair"), out int hv) && hv >= 0 && hv < Hairs.Length ? hv : 0;
+        HairBox.SelectionChanged += (_, _) => SaveSetting("hair", HairBox.SelectedIndex.ToString());
         GameBox.Text = LoadSetting("game") ?? "";
         BudgetBox.SelectedIndex = int.TryParse(LoadSetting("budget"), out int b) ? b : DetectBudget(GameBox.Text);
         GameBox.LostFocus += (_, _) => BudgetBox.SelectedIndex = DetectBudget(GameBox.Text);
@@ -152,19 +267,20 @@ public partial class MainWindow : Window
         //  'engine stopped' then showed over the good result)
         AttireBox.SelectionChanged += async (_, _) => { if (!filling && chosen != null && AttireBox.SelectedItem is string) await Inspect(); };
         PortButton.Click += async (_, _) => await Port();
+        PortAllButton.Click += async (_, _) => await PortAllAttires();
+        ShareButton.Click += (_, _) => ShareLast();
         OpenButton.Click += (_, _) => { if (lastMod != null) System.Diagnostics.Process.Start("explorer.exe", lastMod); };
-        void Open3D()
-        {
-            if (lastMod == null || !File.Exists(Path.Combine(lastMod, "ch.pac"))) return;
-            new ViewerWindow(lastMod, chosen?.Name ?? Path.GetFileName(lastMod), entrance.BuiltPic != null, onEntrance).Show(this);
-        }
+        // The 3D view works BEFORE porting too (2026-11-18): with no port yet it opens the 2K / mod model itself, and
+        // once a port exists the window's "2K model" button switches between the two.
         View3DButton.Click += (_, _) => Open3D();
-        // (people click the picture to turn it: a click on the built model's picture opens the 3D view too)
-        PreviewImage.PointerPressed += (_, _) => { if (View3DButton.IsEnabled && PreviewTitle.Text?.Contains("pages") == true) Open3D(); };
+        // (people click the picture to turn it: a click on the picture opens the 3D view)
+        PreviewImage.PointerPressed += (_, _) => { if (View3DButton.IsEnabled) Open3D(); };
         InstallButton.Click += async (_, _) => await Install();
         AttireButton.Click += async (_, _) => await InstallAttire();
         ReplaceButton.Click += async (_, _) => await ReplaceInGame();
         SourcePreviewButton.Click += async (_, _) => await SourcePreview();
+        // click a row and that piece lights up in orange, so you can see which one a name is (2026-11-18)
+        MeshList.SelectionChanged += (_, _) => { if (MeshList.SelectedItem is MeshItem mi) _ = SourcePreview(mi.Name); };
         GameBrowse.Click += async (_, _) => { if (await PickFolder("Choose the SvR 2011 game folder") is string p) { GameBox.Text = p; SaveSetting("game", p); } };
         SourceBrowse.Click += async (_, _) => { if (await PickFolder(SrcAEW.IsChecked == true ? "Choose AEW's paks folder (…\\content\\paks)" : "Choose a 2K folder: a 2K26 install, a mods folder or one wrestler") is string p) { SourceBox.Text = p; } };
         OutBrowse.Click += async (_, _) => { if (await PickFolder("Choose where PortIT writes the mods") is string p) { OutBox.Text = p; SaveSetting("out", p); } };
@@ -177,6 +293,7 @@ public partial class MainWindow : Window
                                                                      ReportDialog.CollectLog(Core.Engine.LastLog, ReportText.Text ?? "")).ShowDialog(this);
         OpenModelButton.Click += async (_, _) => await OpenModel();
         DiscordButton.Click += (_, _) => Community.Open(Community.Discord);
+        SuggestButton.Click += async (_, _) => await new SuggestDialog().ShowDialog(this);
         Opened += async (_, _) =>
         {
             FitToScreen();
@@ -186,6 +303,7 @@ public partial class MainWindow : Window
                 SaveSetting("discord_told", DateTime.Now.ToString("yyyy-MM-dd"));
                 await Community.Announce(this);
             }
+            _ = CheckForUpdate();          // (in the background: the list loads meanwhile)
             if (Directory.Exists(SourceBox.Text)) await LoadList();
         };
         InitOutfits();
@@ -368,6 +486,42 @@ public partial class MainWindow : Window
                  .Select(x => new PoseChoice($"{x.Name}'s pose", x.Base)),
     ];
 
+    /// <summary>
+    /// How wet the skin looks. The game's skin shader multiplies its sweat level (which rises during a match) by a
+    /// sweat mask, and that mask is the alpha of the skin texture: stock SvR 2011 is a flat 77. PortIT's old
+    /// fallback was 47 - drier than the game's own. (user request 2026-11-16)
+    /// </summary>
+    public sealed record SweatChoice(string Label, int? Level, double Shine)
+    {
+        public override string ToString() => Label;
+    }
+
+    /// <summary>
+    /// How much the hair swings, from the settings the game's own superstars carry. Measured off all 445 chain
+    /// settings lines in the 43 haired stock characters, so every level stays inside the range the game itself uses
+    /// (Build.HairChains.Line). (user request 2026-11-16: "lets make a big update to moving hair")
+    /// </summary>
+    public sealed record HairChoice(string Label, string? Feel)
+    {
+        public override string ToString() => Label;
+    }
+
+    static readonly HairChoice[] Hairs =
+    [
+        new("Off - the hair stays still", null),
+        new("Like the game", "natural"),
+        new("Gentle - barely moves", "gentle"),
+        new("Loose - swings more", "loose"),
+    ];
+
+    static readonly SweatChoice[] Sweats =
+    [
+        new("Like the game", 77, 0.33),
+        new("Dry - no shine", 0, 0.0),
+        new("Extra oily", 140, 0.62),
+        new("As the model has it", null, 0.20),
+    ];
+
     static readonly HashSet<int> FemaleBases = [297, 224, 294, 292, 293, 164, 291, 174, 182, 143, 290, 295, 296];
 
     /// <summary>one model file (people's request 2026-11-10: open just the wrestler they want, no game needed)</summary>
@@ -478,6 +632,8 @@ public partial class MainWindow : Window
     {
         chosen = w;
         PortButton.IsEnabled = w != null;
+        // "Port every attire" only means anything when there IS more than one (2026-11-18)
+        PortAllButton.IsEnabled = w != null && w.Attires.Length > 1;
         if (w == null) return;
         ChosenText.Text = $"{w.Name}   ({(w.Female ? "female" : "male")})";
         SetFemale(w.Female);
@@ -493,6 +649,20 @@ public partial class MainWindow : Window
         }
         finally { filling = false; }
         await Inspect();
+        // Man or woman, once the model itself has been read.
+        //
+        // The list only knows for a 2K19 - 2K22 pack it has unpacked before, and unpacking 100 packs to
+        // draw a list would take a minute, so until then every one of them is listed as a man - Alexa
+        // Bliss included (2026-11-17). Reading the wrestler tells us properly: the women's body has
+        // 12,699 points. This is the moment the chip, the fighting style and the weight class are set,
+        // and it is only done here, when the wrestler is picked, so a chip you set yourself stands.
+        if (ringInspect is System.Text.Json.JsonElement ri && ri.TryGetProperty("female", out var fe)
+            && fe.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+            && fe.GetBoolean() != (FemaleChip.IsChecked == true))
+        {
+            SetFemale(fe.GetBoolean());
+            ChosenText.Text = $"{w.Name}   ({(fe.GetBoolean() ? "female" : "male")})";
+        }
         // (screenshots only: PORTIT_SHOT_ENTRANCE=<n> picks entrance option n once the wrestler is read)
         if (int.TryParse(Environment.GetEnvironmentVariable("PORTIT_SHOT_ENTRANCE"), out int shotEntrance) && shotEntrance < EntranceBox.ItemCount)
             EntranceBox.SelectedIndex = shotEntrance;
@@ -506,6 +676,37 @@ public partial class MainWindow : Window
             ["command"] = command, ["source"] = Source, ["path"] = SourceBox.Text?.Trim().Trim('"') ?? "", ["id"] = w.Id,
         };
         if (Source == "2k26" && AttireBox.SelectedItem is string a && w.Attires.Contains(a)) req["attire"] = a;
+        return req;
+    }
+
+    /// <summary>everything the "port" command needs, from the settings on the right. Shared by one port and by
+    /// "Port all attires" (2026-11-18), so the two can never drift apart.</summary>
+    Dictionary<string, object?> PortRequest(string game)
+    {
+        string outDir = OutBox.Text?.Trim().Trim('"') ?? "";
+        SaveSetting("out", outDir);
+        var req = Request("port");
+        req["game"] = game;
+        req["out"] = outDir;
+        req["female"] = FemaleChip.IsChecked == true;
+        req["base"] = (StyleBox.SelectedItem as Style)?.Base ?? 139;
+        // real height and weight: the engine turns the height into the manifest's height= once it knows the
+        // model's own size, and checks the weight against the body type's class (the game stores no weight)
+        req["height_cm"] = heightCm;
+        req["weight_kg"] = weightKg;
+        if (MovesBox.SelectedItem is MoveSet ms && ms.From > 0) req["moves_from"] = ms.From;
+        if (PoseBox.SelectedItem is PoseChoice pc && pc.Id > 0) req["pose"] = pc.Id;
+        if (SweatBox.SelectedItem is SweatChoice sc && sc.Level is int lv) req["sweat"] = lv;
+        req["budget"] = (BudgetBox.SelectedItem as Budget)?.Pages ?? 190;
+        req["hd_size"] = (HdBox.SelectedItem as HdSize)?.Width ?? 4096;
+        req["face"] = FaceCheck.IsChecked == true;
+        var hair = HairBox.SelectedItem as HairChoice ?? Hairs[0];
+        req["moving_hair"] = hair.Feel != null;
+        if (hair.Feel != null) req["hair_feel"] = hair.Feel;
+        req["mod_id"] = (ModIdBox.Text ?? "").Trim();
+        req["mod_name"] = (ModNameBox.Text ?? "").Trim();
+        // (each outfit's unticked pieces left out, its ticked alternate looks used; the entrance outfit a second model)
+        AddOutfits(req);
         return req;
     }
 
@@ -562,28 +763,9 @@ public partial class MainWindow : Window
             if (pick != smaller) return;
         }
         bool remind = !FullDetail && dllState != "portit";
-        string outDir = OutBox.Text?.Trim().Trim('"') ?? "";
-        SaveSetting("out", outDir);
-        var req = Request("port");
-        req["game"] = game;
-        req["out"] = outDir;
-        req["female"] = FemaleChip.IsChecked == true;
-        req["base"] = (StyleBox.SelectedItem as Style)?.Base ?? 139;
-        // real height and weight: the engine turns the height into the manifest's height= once it knows the
-        // model's own size, and checks the weight against the body type's class (the game stores no weight)
-        req["height_cm"] = heightCm;
-        req["weight_kg"] = weightKg;
-        if (MovesBox.SelectedItem is MoveSet ms && ms.From > 0) req["moves_from"] = ms.From;
-        if (PoseBox.SelectedItem is PoseChoice pc && pc.Id > 0) req["pose"] = pc.Id;
-        req["budget"] = (BudgetBox.SelectedItem as Budget)?.Pages ?? 190;
-        req["hd_size"] = (HdBox.SelectedItem as HdSize)?.Width ?? 4096;
-        req["face"] = FaceCheck.IsChecked == true;
-        req["moving_hair"] = HairCheck.IsChecked == true;
-        req["mod_id"] = (ModIdBox.Text ?? "").Trim();
-        req["mod_name"] = (ModNameBox.Text ?? "").Trim();
-        // (each outfit's unticked pieces left out, its ticked alternate looks used; the entrance outfit a second model)
-        AddOutfits(req);
+        var req = PortRequest(game);
         ReportText.Text = "";
+
         await Work($"Porting {chosen.Name}…", async ct =>
         {
             var r = await Core.Engine.Run(python, req, line => Dispatcher.UIThread.Post(() => { ReportText.Text += line + "\n"; Status(line); }), ct);
@@ -593,6 +775,8 @@ public partial class MainWindow : Window
             lastPages = r.GetProperty("pages").GetInt32();
             OpenButton.IsEnabled = InstallButton.IsEnabled = AttireButton.IsEnabled = View3DButton.IsEnabled = ReplaceButton.IsEnabled = true;
             Status($"Done: {lastMod}");
+            lastShare = r.TryGetProperty("share_zip", out var szp) && szp.ValueKind == JsonValueKind.String ? szp.GetString() : null;
+            ShareButton.IsEnabled = lastMod != null;
             if (r.TryGetProperty("share_zip", out var sz) && sz.ValueKind == JsonValueKind.String)
             {
                 // (people shared the .svrmod and forgot the HD textures: one zip with both - the user's request 2026-11-12)
@@ -614,6 +798,133 @@ public partial class MainWindow : Window
                  .FirstOrDefault(l => l.StartsWith("warning:", StringComparison.OrdinalIgnoreCase)) is { } warn)
                 Status(warn);
         });
+    }
+
+    // ------------------------------------------------------------------ every attire in one go
+    /// <summary>Port EVERY attire this wrestler has, one after the other, with the settings as they are - each into its
+    /// own mod folder named after the attire. Without this it is the same long job repeated by hand for each attire
+    /// (the user's request 2026-11-18). The engine is untouched: it is the same port command, run once per attire.</summary>
+    async Task PortAllAttires()
+    {
+        if (chosen == null) return;
+        var attires = chosen.Attires.ToList();
+        if (attires.Count < 2) { Status("This wrestler has only one attire - use Port."); return; }
+        string game = GameBox.Text?.Trim().Trim('"') ?? "";
+        if (!File.Exists(Path.Combine(game, "pac", "ch", "ch104.pac")))
+        {
+            Status(@"The SvR game folder must have pac\ch (the stock models are the templates).");
+            return;
+        }
+        SaveSetting("game", game);
+        if (!await Confirm($"Port all {attires.Count} attires of {chosen.Name}, one after the other?\n\n" +
+                           "Each one becomes its own mod folder, named after its attire. The settings on the right are used for every one.\n\n" +
+                           "This takes about as long as porting once for each attire.")) return;
+        string baseId = (ModIdBox.Text ?? "").Trim(), baseName = (ModNameBox.Text ?? "").Trim();
+        var done = new List<string>();
+        var failed = new List<string>();
+        ReportText.Text = "";
+        await Work($"Porting {attires.Count} attires of {chosen.Name}…", async ct =>
+        {
+            for (int i = 0; i < attires.Count; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                string att = attires[i];
+                string tag = System.Text.RegularExpressions.Regex.Replace(att.Replace('/', '_'), "[^A-Za-z0-9]+", "_").Trim('_').ToLowerInvariant();
+                var req = PortRequest(game);
+                req["attire"] = att;
+                req["mod_id"] = (baseId.Length > 0 ? baseId : "mod") + "_" + tag;
+                req["mod_name"] = (baseName.Length > 0 ? baseName : chosen.Name) + " (" + att + ")";
+                string what = $"attire {i + 1} of {attires.Count}: {att}";
+                Status("Porting " + what + "…");
+                try
+                {
+                    var r = await Core.Engine.Run(python, req, line => Dispatcher.UIThread.Post(() => Status(what + " - " + line)), ct);
+                    lastMod = r.GetProperty("out").GetString();
+                    lastPages = r.GetProperty("pages").GetInt32();
+                    Ported(r);
+                    lastShare = r.TryGetProperty("share_zip", out var sz2) && sz2.ValueKind == JsonValueKind.String ? sz2.GetString() : null;
+                    done.Add(att + "  ->  " + lastMod);
+                    ReportText.Text += $"•  {att}: ported ({lastPages} pages)\n";
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception e)
+                {
+                    failed.Add(att + ": " + e.Message.Split('\n')[0]);
+                    ReportText.Text += $"•  {att}: FAILED - {e.Message.Split('\n')[0]}\n";
+                }
+            }
+            if (done.Count > 0)
+                OpenButton.IsEnabled = InstallButton.IsEnabled = AttireButton.IsEnabled = View3DButton.IsEnabled = ReplaceButton.IsEnabled = ShareButton.IsEnabled = true;
+            ReportText.Text = $"{done.Count} of {attires.Count} attires ported.\n\n" + ReportText.Text +
+                              (failed.Count > 0 ? "\nThe ones that failed are listed above. Port those on their own to see why." : "") +
+                              "\n\nEach attire is its own mod folder. To put several on ONE superstar, use \"Install as attire…\" for each of them.";
+            Status(failed.Count == 0 ? $"Done: all {done.Count} attires ported." : $"Done: {done.Count} ported, {failed.Count} failed.");
+        });
+    }
+
+    // ------------------------------------------------------------------ share
+    /// <summary>The one file to send someone: the zip with the model AND its HD textures, which the port already makes.
+    /// It used to be a sentence in the report that people missed (2026-11-18).</summary>
+    void ShareLast()
+    {
+        if (lastShare != null && File.Exists(lastShare))
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", "/select,\"" + lastShare + "\"") { UseShellExecute = true });
+            Status("Send this one file: " + Path.GetFileName(lastShare) + "  (the model AND its HD textures)");
+            return;
+        }
+        if (lastMod != null)
+        {
+            System.Diagnostics.Process.Start("explorer.exe", lastMod);
+            Status("This port has no share zip (it was made without the HD texture pack) - send the .svrmod from this folder.");
+            return;
+        }
+        Status("Port a wrestler first.");
+    }
+
+    void Open3D()
+    {
+        bool hasPort = lastMod != null && File.Exists(Path.Combine(lastMod, "ch.pac"));
+        // The request is built HERE, on the window's own thread. It reads the boxes and the ticks, and Avalonia
+        // refuses to be read from another thread - doing it inside the function below (which the viewer runs on a
+        // background thread) threw, and the 3D view came up empty with the reason hidden in its bottom line
+        // (2026-11-18).
+        Func<Viewer3D.Scene>? source = null;
+        if (chosen != null)
+        {
+            var req = Request("source_preview");
+            var o = Current;
+            if (o == entrance && o.Attire != null) req["attire"] = o.Attire;
+            req["leave_out"] = LeaveOut(o);
+            req["use"] = Use(o);
+            source = () => Core.Engine.SourceScene(req, CancellationToken.None).GetAwaiter().GetResult();
+        }
+        if (!hasPort && source == null) return;
+        new ViewerWindow(hasPort ? lastMod : null, chosen?.Name ?? (lastMod != null ? Path.GetFileName(lastMod) : "model"),
+                         entrance.BuiltPic != null, onEntrance,
+                         (SweatBox.SelectedItem as SweatChoice)?.Shine ?? 0, source).Show(this);
+    }
+
+    /// <summary>A newer PortIT on GitHub? Then show what is new and ask (UpdateDialog). Only an installed copy -
+    /// never a developer's build - and never during the screenshot runs. No internet, GitHub down, a timeout: says
+    /// nothing at all. "Skip this version" is remembered (2026-11-19).</summary>
+    async Task CheckForUpdate()
+    {
+        string root = AppContext.BaseDirectory;
+        bool test = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("PORTIT_UPDATE_FEED"));
+        if (SkipAnnounce || (!PortIT.Engine.Update.Updater.IsInstalledCopy(root) && !test)) return;
+        PortIT.Engine.Update.Updater.CleanUp(root);           // (the files the last update could not delete while running)
+        PortIT.Engine.Update.Updater.Release? rel;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            rel = await PortIT.Engine.Update.Updater.CheckAsync(typeof(App).Assembly.GetName().Version ?? new Version(0, 0), cts.Token);
+        }
+        catch (Exception) { return; }
+        if (rel == null || LoadSetting("skip_version") == rel.Tag) return;
+        var dlg = new UpdateDialog(rel);
+        await dlg.ShowDialog(this);
+        if (dlg.Choice == "skip") SaveSetting("skip_version", rel.Tag);
     }
 
     void ShowPreview(string? path, string title)

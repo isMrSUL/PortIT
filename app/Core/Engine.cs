@@ -63,6 +63,18 @@ public static class Engine
         return root;
     }
 
+    /// <summary>the SOURCE model (the 2K / mod model, before porting) as a 3D scene for the viewer window. It needs no
+    /// job folder: nothing is written and nothing is changed, it only reads the model. 2026-11-18.</summary>
+    public static Task<PortIT.Engine.Port.Viewer3D.Scene> SourceScene(Dictionary<string, object?> request, CancellationToken cancel)
+    {
+        string json = JsonSerializer.Serialize(request);
+        return Task.Run(() =>
+        {
+            var worker = new PortIT.Engine.Worker(null, cancel) { Cake = CakeSource.Run };
+            return worker.Scene3D(JsonNode.Parse(json)!.AsObject());
+        }, CancellationToken.None);
+    }
+
     /// <summary>the old Python engine (Engine/worker.py in a separate process) - for comparing, developers only</summary>
     static async Task<JsonElement> RunPython(string python, Dictionary<string, object?> request, Action<string>? progress, CancellationToken cancel)
     {

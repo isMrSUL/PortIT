@@ -62,6 +62,22 @@ press an **Install** button.
 > If Windows shows *"Windows protected your PC"*, click **More info**, then **Run anyway**. PortIT is not signed with
 > a paid certificate; that is the only reason for the message.
 
+### Updates come to you (since 1.4.0)
+
+You only download PortIT by hand once. From 1.4.0 on, when a new version is out, PortIT tells you when it starts,
+shows what is new, and asks: **Update now**, **Later** or **Skip this version**.
+
+- **Update now** downloads the new version, checks that the download is exactly the published file (a damaged or
+  changed download is refused), puts it in place and starts PortIT again. It takes about a minute.
+- Nothing is changed without your yes. **Skip this version** is remembered: PortIT asks again only when a newer one
+  comes out.
+- Your settings and your ports are not touched - they are kept outside the PortIT folder.
+- If something goes wrong half-way, PortIT puts every file back as it was, and you keep the version you had.
+- PortIT only checks GitHub when it starts. With no internet it simply says nothing.
+
+If PortIT is in a folder it cannot write to (for example inside `Program Files`), it says so and you download the new
+version by hand - or move PortIT to a folder like `C:\Tools\PortIT`.
+
 ### The big-model DLL (for full detail)
 
 In a match, the game gives each wrestler a fixed amount of memory for the model's shape: 768 KB, about 168
@@ -104,12 +120,13 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 
 | Part | What it is for |
 |---|---|
-| **SvR game** (top) | your SvR 2011 game folder (the one with `pac\ch`). Use **Browse…** to pick it. **Big-model DLL…** installs or checks the [big-model DLL](#the-big-model-dll-for-full-detail). |
-| **Source** (left) | where the wrestlers come from: **WWE 2K19 - 2K26** or **AEW Fight Forever**, its folder (**…**), one wrestler's model folder (**Model folder…**), **Load**, a search box and the list of wrestlers. |
-| **Preview** (middle) | the wrestler as he or she looks in the source game, from the front and the side. After porting it shows the built SvR model. With an [entrance outfit](#entrance-outfit-and-ring-attire), **Ring attire** / **Entrance outfit** at its top right switch between the two. |
-| **Meshes** (middle, bottom) | every part of the model (body, head, eyes, hair, each piece of clothing), in plain words (*Left knee pad*) with the 2K name under it (`M_L_Kneepad`). Untick a piece to leave it out. **Show** draws the model with that piece in orange, so you can see which one it is. |
-| **Port** (right) | the choices for the port, the **Port to SvR 2011** button, the install buttons and the port report. |
-| Status bar (bottom) | what PortIT is doing right now, or the last message. |
+| **SvR game** (top) | your SvR 2011 game folder (the one with `pac\ch`). **Browse…** sits at the end of the box. At the top right: **Big-model DLL…** installs or checks the [big-model DLL](#the-big-model-dll-for-full-detail), **Suggest an idea…**, **Report a problem…** and **Discord**. |
+| **1 · Wrestler** (left) | where the wrestlers come from: **WWE 2K19 - 2K26** or **AEW Fight Forever**, its folder (**…**), **Load**, a search box, one wrestler's model folder (**Model folder…**) and the list of wrestlers. |
+| **Preview** (middle) | the wrestler from the **front, the side and the back**, as he looks in the source game. It follows your choices by itself - untick a piece or pick another entrance outfit and it draws again in a moment. Click it, or **3D view**, to turn him in 3D - before porting too. After porting it shows the built SvR model. With an [entrance outfit](#entrance-outfit-and-ring-attire), **Ring attire** / **Entrance outfit** at its top right switch between the two. |
+| **Meshes** tab (under the picture) | every part of the model (body, head, eyes, hair, each piece of clothing), in plain words (*Left knee pad*) with the 2K name under it (`M_L_Kneepad`). Untick a piece to leave it out. **Click a row** (or **Show**) to light that piece up in orange, so you can see which one it is. A row with no tick box says why under its name - the eyes, the body, or a copy the game does not use. |
+| **Port report** tab | what the last port did and checked (see [The report](#the-report)). |
+| **2 · Settings** (right) | the choices for the port, in groups you can fold away. *How it looks in game* and *Detail and texture size* start closed: their defaults are good. Under them: **Port to SvR 2011**, **Port every attire**, **Share this wrestler…** and the install buttons. |
+| Status bar (bottom) | what PortIT is doing right now, or the last message, with a progress bar at its right while it works. |
 
 ## 4. Port a wrestler, step by step
 
@@ -126,18 +143,22 @@ It was tested with SvR 2011 PC port 2.1.9 and 2.2.1. Its source is in the [`bigm
 4. Click **Load**. The list fills with the wrestlers. WWE 2K26 has more than 550; type in **Find a wrestler** to
    search. A number after the name (for example *CM Punk #312*) tells versions of the same wrestler apart.
 5. **Click a wrestler.** PortIT reads the model (the first time, a 2K26 wrestler takes a few seconds to unpack) and
-   shows the **preview**. Check it is the wrestler and the look you want.
+   shows the **preview** from the front, the side and the back. Check it is the wrestler and the look you want -
+   **3D view** lets you turn him and zoom into the face before you port anything.
 6. **Attire** (right): if the wrestler has more than one look, pick it here. The preview updates.
 7. **Entrance outfit** (right, optional): what the wrestler walks out in - for example the attire with its jacket
    and hat, while the ring attire is without them. See [Entrance outfit and ring attire](#entrance-outfit-and-ring-attire).
-8. **Meshes**: untick anything you want **left out**, for example a jacket, a hat or a towel. Not sure which piece a
-   name is? Click **Show** on its row. Click **Update preview** to see the wrestler without the unticked pieces.
+8. **Meshes**: untick anything you want **left out**, for example a jacket, a hat or a towel. The picture draws
+   again by itself. Not sure which piece a name is? Click its row and it lights up in orange.
    (The skin under a removed jacket is kept, so no holes.)
 9. Check the choices on the right (see [section 5](#5-the-choices-on-the-right-explained)). In most cases you only
    need: **Model memory = Full detail + HD texture pack**.
 10. Click **Port to SvR 2011**. It takes about **one minute**. The bar at the bottom shows each step.
-11. When it is done, the preview shows the **built SvR model** and the box under the buttons shows the
-    **report** (see [The report](#the-report)).
+11. When it is done, the preview shows the **built SvR model** and the **Port report** tab under it shows what
+    PortIT did (see [The report](#the-report)).
+
+    **More than one attire?** **Port every attire** ports them all, one after the other, with the same settings.
+    Each one becomes its own mod folder, named after its attire, and the report lists which ones worked.
 12. Put it in your game: **Install to game…** or **Install as attire…** (see [section 6](#6-put-the-wrestler-in-your-game)).
 
 ## 5. The choices on the right, explained
@@ -245,7 +266,9 @@ PortIT reads your game's log and picks the right option for you when it can.
 
 ### The 3D view
 
-After a port, click the preview picture (or **3D view**) to open the built model in 3D, with its HD textures:
+Click the preview picture (or **3D view**) to open the model in 3D. **Before porting** it shows the 2K / AEW model
+as it is; **after a port** it shows the built SvR model with its HD textures, and the **2K model (before porting)**
+button (key **B**) switches between the two, so you can see what the port changed:
 
 - **Left-drag** turns it, **right-drag** (or Shift + drag) moves it, the **wheel** zooms to the mouse, **double-click**
   or **Home** resets.
@@ -359,7 +382,7 @@ Every port is also saved, next to its folder in the output folder, as:
 port simple starting values (all ratings 80; the base and moves you picked), so it is worth a visit.
 
 When you share a port, share the **SHARE THIS** zip: people often shared the `.svrmod` alone and forgot the HD
-textures.
+textures. **Share this wrestler…** (under the Port button) opens the folder with that zip already picked.
 
 ## 8. Tips and limits
 
@@ -418,6 +441,15 @@ creator's permission.
 **To get a problem fixed, I need the model.** Most bugs only happen with one model's files, and without them I can't
 see the problem or test the fix. Use the Report button, or send the link to the model files to me **in a private
 message on Discord (DMs)** - please don't post model links in public channels or GitHub issues.
+
+### Suggesting an idea
+
+Something PortIT should do, or do better? Click **Suggest an idea…** at the top right (since 1.4.0). Write your idea,
+and if it helps, **add a picture** - a sketch, a screenshot, an example from another tool. A big picture is made
+smaller by PortIT before it is sent, so any size is fine. Your idea goes straight to me in a private channel, with
+PortIT's version and, if you add it, your Discord name - nothing else is read from your PC.
+
+For a **bug**, use **Report a problem…** instead: it asks for the model, and most bugs can only be fixed with it.
 
 ## 10. Where PortIT keeps its files
 

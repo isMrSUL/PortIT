@@ -21,9 +21,13 @@ public sealed class Port2k
     public HashSet<string> LeaveOut = [];
     /// <summary>moving hair: bone chains for the hair that hangs, swung by the game (Build.HairChains)</summary>
     public bool MovingHair;
+    /// <summary>how much it swings: "gentle", "natural" (the default) or "loose" - HairChains.Feel</summary>
+    public string HairFeel = "natural";
     public string? HairNote;
     /// <summary>alternate looks to use (an entrance outfit's M_Hair_Entrance...): read as normal meshes</summary>
     public HashSet<string> UseVariants = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>how wet the skin looks (SvrBuilder.Sweat); null = the model's own</summary>
+    public int? Sweat;
     static readonly System.Globalization.CultureInfo Inv = System.Globalization.CultureInfo.InvariantCulture;
 
     public sealed class Info
@@ -277,7 +281,8 @@ public sealed class Port2k
         foreach (var l in rf.Report) print(l);
         SolidAlphaGear(meshes, probe, print);
         R.Fbx.NotGear = new HashSet<string>(["M_Body", "M_Head", "M_EYE", "M_Head_Caruncle", "M_TransB_eyelash", "M_transB_eyelash", "M_Teeth", "M_Tongue", "M_MouthBag"])
-            .Union(meshes.Where(IsCard).Select(m => m.Name)).ToHashSet();
+            .Union(meshes.Where(IsCard).Select(m => m.Name))
+            .Union(meshes.Where(m => RockFbx.IsEyeMesh(m.Name)).Select(m => m.Name)).ToHashSet();
         R.DropMeshes = new HashSet<string>(["M_Teeth", "M_Tongue"]).Union(LeaveOut)
             .Union(meshes.Where(m => m.Name.ToLowerInvariant().StartsWith("lambert") || m.Name.ToLowerInvariant().StartsWith("polysurface")
                                      || m.Name.ToLowerInvariant().Contains("eyeshadow") || m.Name == "S_Hair").Select(m => m.Name)).ToHashSet();
@@ -288,6 +293,26 @@ public sealed class Port2k
             R.DropMeshes.Add(m.Name);
             print($"{m.Name}: no eyelash map in the mod (it drew white) - left out");
         }
+        // Hair or beard cards with no picture of their own are left out.
+        //
+        // A card mesh is drawn by laying its strand picture on it. With no picture there is nothing to
+        // lay: the strands take one flat colour, and a Yuke's pack's vertex colours are plain WHITE
+        // (measured on Solo Sikoa's 2K22 pack: 255, 255, 255), so his beard and the strands over his
+        // head came out white over the black beard 2K had painted on his head map. The head map already
+        // holds that hair, painted, so dropping the bare cards is what leaves him looking right. The
+        // same reasoning as the eyelashes above (2026-11-17).
+        // ...UNLESS the mod has a strand map (<mat>_rai) for them. Then the cards are not blank at all: the port paints
+        // their strands from that map in the hair's own colour (StrandColour, below), which is how every 2K26 model's
+        // hair works - 2K26 hair NEVER ships a colour map. Dropping those took Zaria's hair off her head entirely
+        // (2026-11-18). Solo Sikoa's 2K22 pack, which this rule was written for, has no _rai map of any kind.
+        foreach (var m in meshes.Where(m => IsCard(m) && string.IsNullOrEmpty(m.Texture) && !R.DropMeshes.Contains(m.Name)
+                                            && !m.Name.StartsWith("M_transB", StringComparison.OrdinalIgnoreCase)))
+        {
+            string cb = m.Material.Split(':')[0], ad0 = AttireDir(chr, attire);
+            if ((R.FindTex(chr, ad0, Regex.Replace(cb, "(?i)_alpha$", ""), "_rai") ?? R.FindTex(chr, ad0, cb, "_rai")) != null) continue;
+            R.DropMeshes.Add(m.Name);
+            print($"{m.Name}: no picture for its hair cards in the mod - left out (they would be white)");
+        }
         var bag = meshes.FirstOrDefault(m => m.Name == "M_MouthBag");
         if (bag != null)
         {
@@ -295,7 +320,7 @@ public sealed class Port2k
             foreach (var m in meshes)
             {
                 if (ReferenceEquals(m, bag) || !string.IsNullOrEmpty(m.Texture) || R.DropMeshes.Contains(m.Name) || m.N > 8000 || IsCard(m)
-                    || m.Name is "M_Head" or "M_Body" or "M_EYE") continue;   // (the head itself, untextured by name, was dropped - Charlotte 2K23)
+                    || m.Name is "M_Head" or "M_Body" || RockFbx.IsEyeMesh(m.Name)) continue;   // (the head itself, untextured by name, was dropped - Charlotte 2K23)
                 var c = Mean0(m.Verts);
                 if (Blas.Norm(new[] { c[0] - c0[0], c[1] - c0[1], c[2] - c0[2] }) < 4.0)
                 {
@@ -309,7 +334,7 @@ public sealed class Port2k
         foreach (var m in meshes)
         {
             string b = m.Material.Split(':')[0];
-            if (m.Name.StartsWith("M_Head", StringComparison.OrdinalIgnoreCase) || m.Name is "M_Body" or "M_EYE") continue;
+            if (m.Name.StartsWith("M_Head", StringComparison.OrdinalIgnoreCase) || m.Name is "M_Body" || RockFbx.IsEyeMesh(m.Name)) continue;
             if (!CardMats.Any(c => b.ToLowerInvariant().StartsWith(c)) && R.FindTex(chr, AttireDir(chr, attire), b, "_rai") != null && RaiMats.Add(b))
                 print($"{m.Name}: material {b} has a hair strand map ({b}_rai) - ported as hair");
         }
@@ -317,7 +342,7 @@ public sealed class Port2k
         foreach (var m in meshes)
         {
             string n = m.Name.ToLowerInvariant();
-            if (n == "m_eye") R.Kind[m.Name] = "eye";
+            if (RockFbx.IsEyeMesh(m.Name)) R.Kind[m.Name] = "eye";
             else if (n.Contains("eyelash")) R.Kind[m.Name] = "lash";
         }
         var tnames = new Dictionary<string, List<RockFbx.Mesh>>();
@@ -326,7 +351,7 @@ public sealed class Port2k
         {
             if (R.DropMeshes.Contains(m.Name)) continue;
             string bas = m.Material.Split(':')[0];
-            string t = bas is "eye_l" or "eye_r" ? "eye" : bas;
+            string t = R.EyeCell(chr, attire, bas);
             if (!tnames.TryGetValue(t, out var l)) { tnames[t] = l = []; torder.Add(t); }
             l.Add(m);
         }
@@ -378,7 +403,8 @@ public sealed class Port2k
         if (shortOf != null) throw new InvalidOperationException("no room in the texture sheet for " + shortOf);
         R.Cells = cells!.ToDictionary(kv => kv.Key, kv => ((int, int, int, int))kv.Value);
         R.Cutout = tnames.Where(kv => IsCard(kv.Value[0])).Select(kv => kv.Key).ToHashSet();
-        R.Shine = new() { ["head"] = (10, 1 / 16.0), ["body"] = (10, 1 / 16.0), ["eye"] = (52, 0), ["eyelash"] = (0, 0), ["eye_caruncle"] = (40, 0) };
+        R.Shine = new() { ["head"] = (10, 1 / 16.0), ["body"] = (10, 1 / 16.0), ["eye"] = (52, 0), ["eye_l"] = (52, 0), ["eye_r"] = (52, 0),
+                          ["eyelash"] = (0, 0), ["eye_caruncle"] = (40, 0) };
         foreach (var t in torder)
             if (!R.Shine.ContainsKey(t))
                 R.Shine[t] = R.Cutout.Contains(t) ? (20, 0) : t.Contains("shoe") || t.Contains("boot") ? (80, 1 / 3.0) : (40, 1 / 3.0);
@@ -428,9 +454,25 @@ public sealed class Port2k
     public const int HairRoom = 2200;
     /// <summary>the fewest points a gear piece keeps in the classic window (or all it has, when fewer)</summary>
     public const int GearFloor = 700;
+    /// <summary>the clothes' pool the first build uses, before any spare pages are handed to it</summary>
+    public const int GearRoomStart = 3000;
 
     /// <summary>vertices kept per mesh (Brock's tested numbers for the 192-page window, x scale)</summary>
-    public static Dictionary<string, int> Targets(Info info, double scale)
+    /// <summary>how many points all the clothes together would like to keep (what a gear pool is measured against)</summary>
+    public static long GearWant(Info info)
+    {
+        long want = 0;
+        foreach (var (n, v) in info.Meshes)
+        {
+            string low = n.ToLowerInvariant();
+            if (low is "m_body" or "m_head" or "m_mouthbag" or "m_teeth" or "m_tongue" || RockFbx.IsEyeMesh(n)) continue;
+            if (low.Contains("eyelash") || low.Contains("caruncle")) continue;
+            want += v;
+        }
+        return want;
+    }
+
+    public static Dictionary<string, int> Targets(Info info, double scale, int gearRoom = 0)
     {
         var T = new Dictionary<string, int>();
         long gearTotal = 0;
@@ -439,14 +481,20 @@ public sealed class Port2k
             string low = n.ToLowerInvariant();
             if (low == "m_body") T[n] = 3000;
             else if (low == "m_head") T[n] = 2700;
-            else if (low == "m_eye" || low.Contains("eyelash") || low is "m_teeth" or "m_tongue") continue;
+            else if (RockFbx.IsEyeMesh(n) || low.Contains("eyelash") || low is "m_teeth" or "m_tongue") continue;
             else if (low == "m_mouthbag") T[n] = 220;
             else if (low.Contains("caruncle")) T[n] = 160;
             else gearTotal += v;
         }
-        const int gearRoom = 3000;
+        // How many points ALL the clothes share. A dev knob (PORTIT_GEARROOM) because it is the one number that
+        // decides whether a big garment keeps its shape: measured on Orange Cassidy (a jacket of 5,306 points),
+        // 3000 -> the jacket gets 606 and the skin shows through in 4,648 pixels; 6000 -> 954 points and 396
+        // pixels, still inside the 190-page window (188). Over about 6000 it back-fires: the extra gear points
+        // push the attempt loop to shrink the BODY instead, and then the body pokes through everywhere
+        // (9000 -> 25,579 pixels). Left at 3000 until it is tested across many models - see research/BUGHUNT.md.
+        if (gearRoom <= 0) gearRoom = int.TryParse(Environment.GetEnvironmentVariable("PORTIT_GEARROOM"), out int gr) ? gr : GearRoomStart;
         foreach (var (n, v) in info.Meshes)
-            if (!T.ContainsKey(n) && n.ToLowerInvariant() != "m_eye" && !n.ToLowerInvariant().Contains("eyelash"))
+            if (!T.ContainsKey(n) && !RockFbx.IsEyeMesh(n) && !n.ToLowerInvariant().Contains("eyelash"))
             {
                 T[n] = Math.Max(Math.Min(v, GearFloor), (int)(gearRoom * (double)v / Math.Max(gearTotal, 1)));   // (a small top kept its shape: 2203 -> 325 let the skin through, GitHub issue 1)
                 if (HeadGear.Any(k => n.ToLowerInvariant().Contains(k))) T[n] = Math.Max(T[n], Math.Min(v, 1100));
@@ -797,20 +845,57 @@ public sealed class Port2k
                 ["cells"] = cj, ["mouth"] = new System.Text.Json.Nodes.JsonArray(R.TmplMouthCell.X, R.TmplMouthCell.Y),
             }.ToJsonString());
             R.Target = [];
-            foreach (var n in cards) R.Kind[n] = "hair";
         }
+        // The hair cards go into their own model (ch.pac child 0x2710) - which is where the chain bones live, so moving
+        // hair only exists for meshes of this kind. It used to happen on the full-detail route only, so on a normal port
+        // ticking "moving hair" did nothing at all and said nothing (found 2026-11-16 on a 190-page Rhea port).
+        if (full || MovingHair) foreach (var n in cards) R.Kind[n] = "hair";
         int cap = full ? FullPort.WindowPages(game, log) : 0;
         // (no big-model DLL - the game's 768 KB: a full-detail port is shared out like the classic window, the face and
         //  body first, not every mesh cut by the same factor - the face went 4310 -> 593 points, GitHub issue 1, 2026-11-12)
         bool small = full && cap < 300;
         double scale = small ? Math.Min(1.0, cap / 190.0) : 1.0;
+        double lastScale = -1, lastPages = -1;     // (the round before: its scale and the pages it came to)
+        // The clothes' share of the points, which can GROW into pages the build did not use.
+        //
+        // The loop below only ever made the model smaller, so a wrestler who landed under the budget left the
+        // rest of the window empty and his clothes stayed thin. Sting 2K19's coat (7,718 points) kept 867 of
+        // them at 158 of his 190 pages, and the shirt under it poked through the coat all over (2026-11-17).
+        // Now a build with pages to spare is done again with a bigger pool for the clothes alone - the face
+        // and the body are not touched - and if that goes over, the last pool that fitted is put back.
+        int gearRoom = int.TryParse(Environment.GetEnvironmentVariable("PORTIT_GEARROOM"), out int gr0) ? gr0 : GearRoomStart;
+        long gearWant = GearWant(info);
+        int grown = 0, lastGoodGear = gearRoom;
         var rawCount = info.Meshes.ToDictionary(x => x.Name, x => x.Verts);
+        // Every mesh's point target at a given scale - the same rules the attempt below uses, in one place, so the
+        // page guess further down can ask "how big would everything be at scale s?" without building anything.
+        Dictionary<string, int> TargetsAt(double s)
+        {
+            var o = new Dictionary<string, int>();
+            if (!full || small)
+            {
+                foreach (var (n, v) in Targets(info, s, gearRoom))
+                    o[n] = cards.Contains(n) ? Math.Max(300, (int)(Math.Min(rawCount[n], HairRoom) * s)) : v;
+            }
+            else if (s >= 1.0)
+            {
+                foreach (var x in info.Meshes)
+                    if (!cards.Contains(x.Name) && x.Verts > FullGearLimit && x.Name is not ("M_Body" or "M_Head")) o[x.Name] = FullGearMax;
+            }
+            else
+            {
+                foreach (var x in info.Meshes)
+                    o[x.Name] = cards.Contains(x.Name) ? Math.Max(300, (int)(rawCount[x.Name] * Math.Sqrt(s)))
+                                                       : Math.Max(150, (int)(x.Verts * s));
+            }
+            return o;
+        }
         for (int attempt = 0; attempt < 6; attempt++)
         {
             var cardT = new Dictionary<string, int>();
             if (!full || small)
             {
-                var T = Targets(info, scale);
+                var T = Targets(info, scale, gearRoom);
                 foreach (var n in T.Keys.ToList())
                     if (cards.Contains(n)) { cardT[n] = Math.Max(300, (int)(Math.Min(rawCount[n], HairRoom) * scale)); T.Remove(n); }
                 R.Target = T;
@@ -843,7 +928,12 @@ public sealed class Port2k
                     //  see-through in game, 2026-11-12)
                     else if (cards.Contains(m.Name)) paint.Add((Clone(m), CardBaseCm));
                 R.TexOverride.Clear();
-                if (paint.Count > 0) BakeFlatCards(meshes, paint, outDir, log, R.TexOverride, t => R.FindTex(chr, attire, t, "_color"), headOnly: MovingHair);   // (moving hair: flat braid ends painted on the back would stay there while the braids swing)
+                if (paint.Count > 0)
+                {
+                    var swb = System.Diagnostics.Stopwatch.StartNew();
+                    BakeFlatCards(meshes, paint, outDir, log, R.TexOverride, t => R.FindTex(chr, attire, t, "_color"), headOnly: MovingHair);
+                    if (Environment.GetEnvironmentVariable("PORTIT_TIMERS") == "1") log($"  [time] painting the cards into the skin map: {swb.Elapsed.TotalSeconds:F1} s");
+                }   // (moving hair: flat braid ends painted on the back would stay there while the braids swing)
                 foreach (var m in meshes)
                 {
                     if (m.Weights.Count == 0) { var one = new double[m.N]; Array.Fill(one, 1.0); m.Weights.Add((head, one)); }
@@ -862,12 +952,17 @@ public sealed class Port2k
             };
             sw.Restart();
             R.Log.Clear();
+            var swr = System.Diagnostics.Stopwatch.StartNew();
             var (_, report) = R.Build(chr, attire, outDir, template);
+            if (Environment.GetEnvironmentVariable("PORTIT_TIMERS") == "1") log($"  [time] rock_model build (retarget, face fit, simplify): {swr.Elapsed.TotalSeconds:F1} s");
             foreach (var l in R.Fbx.Report.Concat(R.Log)) print(l);
             FP.SkinOverGear = R.Fbx.UsedHpl ? 0.10 : double.PositiveInfinity;
+            if (Environment.GetEnvironmentVariable("PORTIT_TUCKDEBUG") == "1") FP.TuckDebug = s => log("tuck: " + s);
             log($"model built: {sw.Elapsed.TotalSeconds:F0} s");
             sw.Restart();
+            var swf = System.Diagnostics.Stopwatch.StartNew();
             FP.FixModel(model, cards.Where(n => !flat.Contains(n)).ToList(), template, log);
+            if (Environment.GetEnvironmentVariable("PORTIT_TIMERS") == "1") log($"  [time] fix_model: {swf.Elapsed.TotalSeconds:F1} s");
             {
                 // (the builder's own colour sheet: the hair cards' cells, cut hard in every level as the HD pack -
                 //  Seth Rollins' beard came out big and blocky in game, 2026-11-12)
@@ -875,7 +970,7 @@ public sealed class Port2k
                 var cc = info.Cutout.Where(t => R.Cells.ContainsKey(t)).Select(t => R.Cells[t]).ToList();
                 foreach (var at in mj["attires"]!.AsArray())
                 {
-                    if (MovingHair) at!["hair_physics"] = true;
+                    if (MovingHair) at!["hair_physics"] = HairFeel;
                     if (cc.Count > 0)
                     {
                         at!["cut_cells"] = new System.Text.Json.Nodes.JsonArray(cc.Select(c => (System.Text.Json.Nodes.JsonNode?)new System.Text.Json.Nodes.JsonArray(c.Item1, c.Item2, c.Item3, c.Item4)).ToArray());
@@ -886,24 +981,75 @@ public sealed class Port2k
             }
             log($"weights fixed: {sw.Elapsed.TotalSeconds:F0} s");
             sw.Restart();
-            var rep = PortIT.Engine.Build.SvrBuilder.Run(model, pac, full);
+            var rep = PortIT.Engine.Build.SvrBuilder.Run(model, pac, full, null, Sweat);
             log($"ch.pac built: {sw.Elapsed.TotalSeconds:F0} s");
             if (rep["ok"]?.GetValue<bool>() != true) throw new InvalidOperationException(rep["error"]?.GetValue<string>() ?? "build failed");
             HairNote = null;
             foreach (var w in rep["warnings"] as System.Text.Json.Nodes.JsonArray ?? [])
                 if (w?.GetValue<string>() is { } ws && ws.StartsWith("moving hair")) { log(ws); HairNote = ws; }
             int pages = rep["attires"]![0]!["pages"]!.GetValue<int>();
+            // How much smaller does everything have to be to fit? The plain rule "scale *= want / pages" assumes the
+            // pages fall in step with the scale. They do not - a good part of the model does not shrink at all (the
+            // eyes, the mouth, the lashes, every piece already on its floor) - so it crept down a few per cent a
+            // round and built the WHOLE model again each time: Orange Cassidy went 201 -> 191 -> 184 pages, three
+            // builds, 49 s (measured 2026-11-17).
+            // Two measurements tell us the real slope, so from the second correction on, draw the line through the
+            // last two builds and solve it (the secant). For the first one there is only one point, so take a bigger
+            // safety step than the old 0.97 - measured over three wrestlers, 0.94 lands inside the window first try.
+            // A wrong guess costs nothing but another round, exactly as before: the loop still checks and retries.
+            double Next(int want)
+            {
+                double next;
+                if (lastScale > 0 && Math.Abs(lastScale - scale) > 1e-6 && Math.Abs(lastPages - pages) > 0.5)
+                {
+                    double slope = (lastPages - pages) / (lastScale - scale);          // pages per unit of scale
+                    next = slope > 1 ? scale + (want - pages) / slope : scale * (double)want / pages * 0.94;
+                }
+                else next = scale * (double)want / pages * 0.94;
+                lastScale = scale; lastPages = pages;
+                return Math.Clamp(next, scale * 0.55, scale * 0.99);                   // (always a real step, never a leap)
+            }
             if (full && pages > cap && attempt < 5)
             {
-                scale *= (double)cap / pages * 0.97;
+                scale = Next(cap);
                 log($"build {attempt + 1}: {pages} pages - over the game vertex window ({cap} pages a wrestler), simplifying (x{scale.ToString("F2", Inv)})");
+                continue;
+            }
+            // over the budget only because the clothes' pool was just raised: put the pool back, do not
+            // shrink the face and the body for it
+            if (!full && pages > budget - 2 && grown > 0 && grown < 90 && gearRoom > lastGoodGear && attempt < 5)
+            {
+                gearRoom = lastGoodGear; grown = 99;
+                log($"build {attempt + 1}: {pages} pages - over {budget}, back to the clothes pool that fitted ({gearRoom} points)");
                 continue;
             }
             if (!full && pages > budget - 2 && attempt < 5)
             {
-                scale *= (double)(budget - 2) / pages * 0.97;
+                scale = Next(budget - 2);
                 log($"build {attempt + 1}: {pages} pages - over {budget}, simplifying more (x{scale.ToString("F2", Inv)})");
                 continue;
+            }
+            // pages to spare: give them to the clothes (the one thing a thin model shows - a big coat at its
+            // floor lets what is under it through). Twice at most, so a port stays quick.
+            // OFF unless PORTIT_GROW=1. Measured 2026-11-19 on Adam Pearce at 190 pages against a full-detail port
+            // (portit-check clipdiff): growing the clothes 3000 -> 3498 points made the skin show through the
+            // jacket in 1,603 front pixels instead of 334 (jacket alone 1,364 vs 95). More points, worse cover -
+            // so it does not ship until someone works out why. Left in for that research.
+            if (!full && grown < 2 && attempt < 4 && gearWant > gearRoom && pages <= budget - 6
+                && Environment.GetEnvironmentVariable("PORTIT_GROW") == "1")
+            {
+                long kept = R.Target.Values.Sum(v => (long)v) + cardT.Values.Sum(v => (long)v);
+                // a rough guess: the pages a model takes go up roughly with the points in it. It is a careful
+                // guess (a good part of a page is texture, which does not grow), and a wrong one only costs
+                // another round - the check above puts the pool back.
+                long add = (long)(kept * (budget - 3 - pages) / (double)Math.Max(pages, 1));
+                int want = (int)Math.Min(gearWant, gearRoom + add);
+                if (want > gearRoom + 200)
+                {
+                    lastGoodGear = gearRoom; gearRoom = want; grown++;
+                    log($"build {attempt + 1}: {pages} pages, {budget - pages} to spare - the clothes get more detail ({lastGoodGear} -> {gearRoom} points)");
+                    continue;
+                }
             }
             log($"build {attempt + 1}: {pages} pages ({(full ? "full detail" : $"window {budget}")})");
             var (heavy, most) = FP.HeavyMeshes(pac);

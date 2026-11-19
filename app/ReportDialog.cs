@@ -13,13 +13,12 @@ using Avalonia.Media;
 namespace PortIT;
 
 /// <summary>"Report a problem": a bug report with the model's download link, sent to SUL's private #portit-reports
-/// Discord channel. It goes through a small relay (a Cloudflare Worker) that holds the Discord webhook, so PortIT
-/// itself never carries it. The report is only what this window shows: the link, the text, the optional contact and
+/// Discord channel. It goes through a small relay server that holds the Discord webhook, so PortIT itself never
+/// carries it (the relay's address is baked in at build time, not kept in the source - see Core\Relay). The report is only what this window shows: the link, the text, the optional contact and
 /// log, plus the PortIT version, the wrestler and the game. The model link is required - most bugs can only be fixed
 /// with the model itself. Added in 1.3.2.</summary>
 public sealed class ReportDialog : Window
 {
-    const string Relay = "https://portit-report.stopit-straw836.workers.dev/";
     const string RelayKey = "portit-report-v1";    // (not a secret: it only stops random web requests)
     const int MaxLog = 900_000;
 
@@ -129,6 +128,7 @@ public sealed class ReportDialog : Window
         string l = (link.Text ?? "").Trim(), w = (what.Text ?? "").Trim();
         if (!IsLink(l)) { Say("Add a link to the model you ported (it starts with https://). Upload it to Google Drive, MediaFire, Mega or Discord and paste the link.", true); return; }
         if (w.Length < 5) { Say("Say what went wrong.", true); return; }
+        if (Core.Relay.Address is not string relay) { Say(Core.Relay.NotInThisBuild, true); return; }
         send.IsEnabled = false;
         Say("Sending…", false);
         var body = new System.Collections.Generic.Dictionary<string, string>
@@ -140,7 +140,7 @@ public sealed class ReportDialog : Window
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(40) };
-            using var msg = new HttpRequestMessage(HttpMethod.Post, Relay)
+            using var msg = new HttpRequestMessage(HttpMethod.Post, relay)
             {
                 Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json"),
             };

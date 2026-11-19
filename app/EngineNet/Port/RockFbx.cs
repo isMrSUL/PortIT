@@ -55,6 +55,19 @@ public sealed class RockFbx
     // settings (module globals in Python; port_2k sets them)
     public HashSet<string> DropMeshes = ["M_Teeth", "M_Tongue", "M_MouthBag"];
     public HashSet<string> NotGear = ["M_Body", "M_Head", "M_EYE", "M_TransB_eyelash", "M_Teeth", "M_Tongue", "M_MouthBag"];
+
+    /// <summary>an eye mesh, however it is spelled: M_EYE, or one eye of a model that keeps them apart (M_EYE_R) -
+    /// Kane 2008's two eyes are two meshes with two pictures, one of them his white lens (2026-11-19)</summary>
+    public static bool IsEyeMesh(string name) => Regex.IsMatch(name, @"^M_Eye(_[LR])?$", RegexOptions.IgnoreCase);
+
+    /// <summary>name is "of" plus a side - the OTHER side of the same thing (M_EYE_R beside M_EYE), not an alternate
+    /// look of it. The alternate-look rule threw Kane 2008's right eye away (2026-11-19).</summary>
+    public static bool SideTwin(string name, string of)
+    {
+        if (!name.StartsWith(of + "_", StringComparison.OrdinalIgnoreCase)) return false;
+        string rest = name[(of.Length + 1)..].ToLowerInvariant();
+        return rest is "l" or "r" or "left" or "right";
+    }
     public double HideOutCm = 4.0, HideInCm = 8.0, KeepEdgeCm = 3.0;
     public bool SkipVariants = true, QuickRead = false;
     /// <summary>alternate looks used all the same (PortIT 2026-11-11: an entrance outfit's M_Hair_Entrance, M_HoodUp...)</summary>
@@ -115,7 +128,12 @@ public sealed class RockFbx
     public static string? TextureFor(string material, IList<string> folders, string outDir, string? extra, string? alias)
     {
         var bas = material.Split(':')[0];
-        var cands = new List<string> { bas, bas.EndsWith("_l") || bas.EndsWith("_r") ? bas[..bas.LastIndexOf('_')] : bas };
+        bool sided = Regex.IsMatch(bas, "_[lr]$", RegexOptions.IgnoreCase);
+        var cands = new List<string> { bas };
+        // (one side of a pair: eye_l -> l_eye first, then the shared eye. Kane 2008's eyes are l_eye_color and
+        //  r_eye_color, and his right eye is spelled "eye_R" - neither was found, 2026-11-19)
+        if (sided) cands.Add(bas[^1..].ToLowerInvariant() + "_" + bas[..^2]);
+        cands.Add(sided ? bas[..^2] : bas);
         if (extra != null && extra.ToLowerInvariant().EndsWith("_color")) cands.Add(extra[..^"_color".Length]);
         // (hair_ALPHA's map is hair_color.DDS: without this the hair took one flat colour from its vertex colours -
         //  Adam Cole '20 (2K25) came out light beige, his hair is dark brown; 2026-11-12)
@@ -426,7 +444,8 @@ public sealed class RockFbx
                     }
                     continue;
                 }
-                if (SkipVariants && !UseVariants.Contains(name) && mats.Any(o => !name.Equals(o, StringComparison.OrdinalIgnoreCase) && name.ToLowerInvariant().StartsWith(o.ToLowerInvariant() + "_")))
+                if (SkipVariants && !UseVariants.Contains(name) && mats.Any(o => !name.Equals(o, StringComparison.OrdinalIgnoreCase) && name.ToLowerInvariant().StartsWith(o.ToLowerInvariant() + "_")
+                                                                             && !SideTwin(name, o)))
                 { Report.Add($"{name,-18} left out (an alternate look)"); continue; }
                 // M_HoodUp / M_HoodDown: 2K keeps both states of a hood in the model and shows one at a time. Keeping
                 // both at once put the hood on the head AND on the shoulders together - a black mass round the head

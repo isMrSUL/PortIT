@@ -36,6 +36,46 @@ public static class ReplaceStar
         return long.TryParse(name[..6], out long id) ? id : null;
     }
 
+    /// <summary>
+    /// Our model, with any part of the game's own that we do not build put back.
+    ///
+    /// A character model is a PACH of numbered parts: 0 the body, 0x2710 the hair, 0x4E20 the EYELASHES,
+    /// 0x3C the hair settings, 0x3D its capsules, and the rest. A PortIT port builds its own, and it
+    /// builds no eyelashes - so replacing a superstar wholesale threw his lashes away. That is not only
+    /// a look: every port is posed to a stock superstar's model and reads the lashes out of it, so after
+    /// replacing (say) Big Show - PortIT's own default body type - the next port died on a bare
+    /// "KeyNotFoundException: 20000" with nothing to say why (found 2026-11-17).
+    ///
+    /// Keeping only the ids we have none of is safe: the model's own body, textures and shapes all win,
+    /// and the leftovers are the pieces the game expects to find and we never touch.
+    /// </summary>
+    public static byte[] KeepTheirParts(byte[] ours, byte[] theirs, List<string>? report = null)
+    {
+        List<Formats.Entry> mine, stock;
+        try
+        {
+            mine = Formats.Pach.Read(Formats.Bpe.Unpack(ours));
+            stock = Formats.Pach.Read(Formats.Bpe.Unpack(theirs));
+        }
+        catch (Exception) { return ours; }       // (not a model entry: left exactly as it was)
+        var have = mine.Select(e => e.Id).ToHashSet();
+        var add = stock.Where(e => !have.Contains(e.Id)).ToList();
+        if (add.Count == 0) return ours;
+        report?.AddRange(add.Select(e => NameOfPart(e.Id)));
+        var all = mine.Concat(add).OrderBy(e => e.Id).ToList();
+        var built = Formats.Pach.Write(all);
+        return Formats.Bpe.IsBpe(ours) ? Formats.Bpe.Encode(built, true) : built;
+    }
+
+    static string NameOfPart(uint id) => id switch
+    {
+        0x4E20 => "eyelashes (0x4E20)",
+        0x2710 => "hair (0x2710)",
+        0x3C => "hair settings (0x3C)",
+        0x3D => "hair capsules (0x3D)",
+        _ => $"0x{id:X}",
+    };
+
     public static JsonObject Run(JsonObject req, Func<string, string, string, JsonObject> copyPack, Action<string> log)
     {
         string S(string k, string d = "") => req[k] is JsonNode n
@@ -86,11 +126,12 @@ public static class ReplaceStar
         var outEntries = new List<(byte[] Name, byte[] Data)>();
         var replaced = new List<string>();
         var kept = new List<string>();
+        var lost = new List<string>();
         foreach (var e in theirs)
         {
             if (byName.TryGetValue(e.NameText, out var ourE))
             {
-                outEntries.Add((ourE.Name, ourE.Data));
+                outEntries.Add((ourE.Name, KeepTheirParts(ourE.Data, e.Data, lost)));
                 replaced.Add(e.NameText);
                 byName.Remove(e.NameText);
             }
@@ -114,6 +155,8 @@ public static class ReplaceStar
         if (kept.Count > 0)
             warnings.Add($"superstar {star} has other models the port did not cover ({string.Join(", ", kept)}): " +
                          "they are the game's originals still, so those attires look as they did.");
+        if (lost.Count > 0)
+            log("parts of the game's own model kept because the port has none: " + string.Join(", ", lost));
 
         byte[] built = Epk8.Write(File.ReadAllBytes(stockPath), outEntries);
 

@@ -22,18 +22,31 @@ namespace PortIT;
 /// </summary>
 public sealed class ViewerWindow : Window
 {
-    readonly string modDir;
+    readonly string? modDir;
+    /// <summary>builds the SOURCE model's scene (the 2K / mod model, before porting). With no port yet this is all the
+    /// window shows; with a port as well, the "2K model" button switches between them. 2026-11-18.</summary>
+    readonly Func<Viewer3D.Scene>? sourceScene;
+    bool showingSource;
     readonly bool hasEntrance;
     bool entrance;
     Viewer3D.Scene? scene;
     readonly Viewer3D.Camera cam = new();
     readonly Image view = new() { Stretch = Stretch.None, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
     readonly Border host = new() { Background = new SolidColorBrush(Color.Parse("#0C1018")), ClipToBounds = true, Focusable = true };
+    /// <summary>said in the middle of the empty pane, not only in the thin line at the bottom: an empty 3D view with
+    /// the reason hidden down there cost a whole round trip to find out why (2026-11-18)</summary>
+    readonly TextBlock trouble = new()
+    {
+        Foreground = new SolidColorBrush(Color.Parse("#E27A7A")), IsVisible = false, MaxWidth = 620,
+        TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center,
+        HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+    };
     readonly TextBlock info = new() { Foreground = new SolidColorBrush(Color.Parse("#98A2B5")), VerticalAlignment = VerticalAlignment.Center };
     readonly ToggleButton texBtn = new() { Content = "Textures", IsChecked = true };
     readonly ToggleButton lightBtn = new() { Content = "Lights", IsChecked = true };
     readonly ToggleButton wireBtn = new() { Content = "Wireframe" };
     readonly ToggleButton outfitBtn = new() { Content = "Entrance outfit" };
+    readonly ToggleButton sourceBtn = new() { Content = "2K model (before porting)" };
     readonly ToggleButton hairBtn = new() { Content = "Hair: head moves", IsEnabled = false };
     readonly ToggleButton turnBtn = new() { Content = "Hair: you turn it", IsEnabled = false };
     int hairMode;            // (0 off, 1 the head turns and nods, 2 the hair reacts as you turn the model)
@@ -43,9 +56,14 @@ public sealed class ViewerWindow : Window
     Point last;
     PointerUpdateKind dragKind;
 
-    public ViewerWindow(string modDir, string title, bool hasEntrance, bool startOnEntrance)
+    public ViewerWindow(string? modDir, string title, bool hasEntrance, bool startOnEntrance, double shine = 0,
+                        Func<Viewer3D.Scene>? sourceScene = null)
     {
+        cam.Shine = shine;        // (the wet skin the user picked, so it can be seen before porting)
         this.modDir = modDir; this.hasEntrance = hasEntrance; entrance = hasEntrance && startOnEntrance;
+        this.sourceScene = sourceScene;
+        bool hasPort = modDir != null && File.Exists(Path.Combine(modDir, "ch.pac"));
+        showingSource = !hasPort && sourceScene != null;
         Title = "PortIT - 3D view - " + title;
         Width = 1100; Height = 850; MinWidth = 500; MinHeight = 400;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -72,6 +90,19 @@ public sealed class ViewerWindow : Window
         bar.Children.Add(new Border { Width = 12 });
         bar.Children.Add(hairBtn);
         bar.Children.Add(turnBtn);
+        if (sourceScene != null && hasPort)
+        {
+            sourceBtn.Padding = new Thickness(10, 4); sourceBtn.IsChecked = showingSource;
+            ToolTip.SetTip(sourceBtn, "Show the 2K / mod model as it is BEFORE porting, to compare it with your port (key B)");
+            sourceBtn.IsCheckedChanged += (_, _) =>
+            {
+                showingSource = sourceBtn.IsChecked == true;
+                hairBtn.IsChecked = turnBtn.IsChecked = false;
+                _ = LoadScene();
+            };
+            bar.Children.Add(new Border { Width = 12 });
+            bar.Children.Add(sourceBtn);
+        }
         if (hasEntrance)
         {
             outfitBtn.Padding = new Thickness(10, 4); outfitBtn.IsChecked = entrance;
@@ -83,14 +114,17 @@ public sealed class ViewerWindow : Window
         var help = new TextBlock
         {
             Text = "Left-drag: turn   ·   Right-drag (or Shift+drag, middle-drag): move   ·   Wheel: zoom to the mouse   ·   Double-click: reset   ·   " +
-                   "Keys: 1 front, 3 side, Ctrl+1 back, 7 top, F head, W wireframe, T textures, L lights, H hair (head moves), J hair (you turn it)",
+                   "Keys: 1 front, 3 side, Ctrl+1 back, 7 top, F head, W wireframe, T textures, L lights, H hair (head moves), J hair (you turn it), B the 2K model",
             Foreground = new SolidColorBrush(Color.Parse("#646E82")), FontSize = 12, TextWrapping = TextWrapping.Wrap,
         };
         var bottom = new DockPanel { Margin = new Thickness(10, 6, 10, 8) };
         DockPanel.SetDock(info, Dock.Right);
         bottom.Children.Add(info);
         bottom.Children.Add(help);
-        host.Child = view;
+        var stack = new Grid();
+        stack.Children.Add(view);
+        stack.Children.Add(trouble);
+        host.Child = stack;
         var root = new DockPanel();
         DockPanel.SetDock(bar, Dock.Top); DockPanel.SetDock(bottom, Dock.Bottom);
         root.Children.Add(bar); root.Children.Add(bottom); root.Children.Add(host);
@@ -168,6 +202,23 @@ public sealed class ViewerWindow : Window
     async Task LoadScene()
     {
         info.Text = "Loading…";
+        if (showingSource || modDir == null)
+        {
+            if (sourceScene == null) { info.Text = "Nothing to show."; return; }
+            try
+            {
+                var ss = await Task.Run(sourceScene);
+                scene = ss; sim = null;
+                hairBtn.IsChecked = turnBtn.IsChecked = false;
+                hairBtn.IsEnabled = turnBtn.IsEnabled = false;
+                trouble.IsVisible = false;
+                info.Text = $"the 2K model, before porting  ·  {ss.Verts:N0} points  ·  {ss.Tris:N0} triangles  ·  {ss.Parts.Count} pieces";
+                if (ss.Parts.Count == 0) Trouble("This model has no pieces to draw.");
+            }
+            catch (Exception e) { Trouble("Could not read the 2K model." + '\n' + '\n' + e.Message); scene = null; }
+            Redraw();
+            return;
+        }
         string pac = Path.Combine(modDir, "ch.pac");
         string? dds = Viewer3D.HdColor(modDir, entrance);
         try
@@ -179,8 +230,22 @@ public sealed class ViewerWindow : Window
             info.Text = $"{s.Verts:N0} points  ·  {s.Tris:N0} triangles  ·  texture {s.TW} x {s.TH}{(dds != null ? " (HD pack)" : "")}" +
                         (sim != null && sim.Chains > 0 ? $"  ·  moving hair: {sim.Chains} chains" : "");
         }
-        catch (Exception e) { info.Text = "Could not read the model: " + e.Message; scene = null; }
+        catch (Exception e) { Trouble("Could not read the built model." + '\n' + '\n' + e.Message); scene = null; }
         Redraw();
+    }
+
+    /// <summary>show a failure where it cannot be missed, and write it down so it can be looked at later</summary>
+    void Trouble(string text)
+    {
+        info.Text = text.Replace('\n', ' ');
+        trouble.Text = text;
+        trouble.IsVisible = true;
+        try
+        {
+            File.AppendAllText(Path.Combine(PortIT.Engine.Worker.LocalRoot, "viewer.log"),
+                               DateTime.Now.ToString("u") + "  " + text.Replace('\n', ' ') + Environment.NewLine);
+        }
+        catch (Exception) { }
     }
 
     (int W, int H) PixelSize()
@@ -277,6 +342,7 @@ public sealed class ViewerWindow : Window
             case Key.L: lightBtn.IsChecked = lightBtn.IsChecked != true; return;
             case Key.H: if (hairBtn.IsEnabled) hairBtn.IsChecked = hairBtn.IsChecked != true; return;
             case Key.J: if (turnBtn.IsEnabled) turnBtn.IsChecked = turnBtn.IsChecked != true; return;
+            case Key.B: if (sourceBtn.Parent != null) sourceBtn.IsChecked = sourceBtn.IsChecked != true; return;
             case Key.Left: cam.Yaw += 0.2; break;
             case Key.Right: cam.Yaw -= 0.2; break;
             case Key.Up: cam.Pitch = Math.Clamp(cam.Pitch + 0.2, -1.55, 1.55); break;

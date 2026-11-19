@@ -34,7 +34,7 @@ internal static class Program
             foreach (int id in keys) System.Console.WriteLine($"{id}\t{sz[id].Scale}\t{sz[id].WeightClass}");
             return 0;
         }
-        if (args.Length == 3 && args[0] == "--shot-3d") return Render.View3D(args[1], args[2]);
+        if (args.Length >= 3 && args[0] == "--shot-3d") return Render.View3D(args[1], args[2], args.Length > 3 ? double.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture) : 0);
         if (args.Length == 2 && args[0] == "--shot-discord") return Render.Discord(args[1]);
         if (args.Length >= 2 && args[0] == "--shot-report") return Render.Report(args[1], args.Length > 2 && args[2] == "send", args.Length > 3 ? args[3] : null);
         if (args.Length == 4 && args[0] == "--shot-attire") return Render.Attire(args[1], args[2], args[3]);

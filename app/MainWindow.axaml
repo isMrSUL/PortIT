@@ -1,60 +1,76 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="clr-namespace:PortIT.Controls"
-        x:Class="PortIT.MainWindow" Title="PortIT — Port Tool" Width="1500" Height="920" MinWidth="1150" MinHeight="680"
+        x:Class="PortIT.MainWindow" Title="PortIT — Port Tool" Width="1500" Height="920" MinWidth="1100" MinHeight="660"
         WindowStartupLocation="CenterScreen" Icon="/Assets/portit.ico">
+  <!-- Rebuilt 2026-11-18 (the user asked for an overhaul of the tool and the look). What changed, and why:
+         * the picture is much bigger - it was squeezed by a fixed 270px mesh panel under it
+         * the pieces and the port report now share TABS under the picture, so the report has real room
+           instead of a 100px box at the bottom of the settings column
+         * the settings are grouped and the groups you rarely touch start closed, instead of 16 boxes in one
+           long stack
+         * the actions are one block at the bottom: Port big, everything else small
+       Every control keeps the name it had, so nothing in the code behind had to change. -->
   <Grid RowDefinitions="Auto,*,Auto">
-    <!-- header: the PortIT mark, the SvR game folder -->
-    <Border Grid.Row="0" Background="{StaticResource Surface}" Padding="18,12">
+
+    <!-- ============================================================ header -->
+    <Border Grid.Row="0" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,10">
       <Grid ColumnDefinitions="Auto,*,Auto">
-        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-          <c:LogoMark Width="40" Height="40" />
-          <StackPanel VerticalAlignment="Center" Spacing="1">
+        <StackPanel Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
+          <c:LogoMark Width="34" Height="34" />
+          <StackPanel VerticalAlignment="Center" Spacing="0">
             <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="PortIT" FontSize="20" FontWeight="Bold" />
+              <TextBlock Text="PortIT" FontSize="19" FontWeight="Bold" />
               <Border Classes="tag" VerticalAlignment="Center"><TextBlock Text="port tool" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource AccentHi}" /></Border>
             </StackPanel>
-            <TextBlock Classes="sub" Text="Bring WWE 2K19 - 2K26 and AEW Fight Forever wrestlers into SvR 2011" />
+            <TextBlock Classes="sub" FontSize="11.5" Text="WWE 2K19 - 2K26 and AEW Fight Forever  →  SvR 2011" />
           </StackPanel>
         </StackPanel>
-        <Border Grid.Column="1" Margin="30,0,12,0" VerticalAlignment="Center" Classes="field">
-          <Grid ColumnDefinitions="Auto,*">
-            <TextBlock Classes="faint" Text="SvR game" VerticalAlignment="Center" Margin="12,0,6,0" />
+
+        <Border Grid.Column="1" Margin="26,0,12,0" VerticalAlignment="Center" MaxWidth="560" HorizontalAlignment="Left" Classes="field">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <TextBlock Classes="faint" Text="SvR game" VerticalAlignment="Center" Margin="12,0,8,0" />
             <TextBox Grid.Column="1" x:Name="GameBox" Classes="bare" Watermark="SvR 2011 game folder (the one with pac\ch)" />
+            <Button Grid.Column="2" x:Name="GameBrowse" Content="Browse…" Classes="inline" />
           </Grid>
         </Border>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Button x:Name="GameBrowse" Content="Browse…" />
-          <Button x:Name="BigModelButton" Content="Big-model DLL…"
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Button x:Name="BigModelButton" Content="Big-model DLL…" Classes="quiet"
                   ToolTip.Tip="Install / check PortIT's big-model DLL (xinput1_4.dll) in the game folder: needed for full-detail models and their HD textures" />
-          <Button x:Name="ReportButton" Content="Report a problem…"
+          <Button x:Name="SuggestButton" Content="Suggest an idea…" Classes="quiet"
+                  ToolTip.Tip="Send SUL an idea for PortIT, privately - with a picture if you like" />
+          <Button x:Name="ReportButton" Content="Report a problem…" Classes="quiet"
                   ToolTip.Tip="Send a bug report privately to SUL, the maker of PortIT, with a link to the model you ported" />
-          <Button x:Name="DiscordButton" Content="Discord"
+          <Button x:Name="DiscordButton" Content="Discord" Classes="quiet"
                   ToolTip.Tip="Open the SUL Modding Discord: help, new versions, and the mods people make" />
         </StackPanel>
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1" Margin="12,10,12,10" ColumnDefinitions="340,10,*,10,370">
-      <!-- left: the source wrestlers -->
-      <Border Grid.Column="0" Classes="panel" Padding="14">
+    <Grid Grid.Row="1" Margin="12,12,12,8" ColumnDefinitions="330,8,*,8,392">
+
+      <!-- ============================================================ left: pick a wrestler -->
+      <Border Grid.Column="0" Classes="panel" Padding="13">
         <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
           <Grid ColumnDefinitions="Auto,*,Auto">
             <Border Classes="bar" />
-            <TextBlock Grid.Column="1" Classes="h" Text="Source" />
+            <TextBlock Grid.Column="1" Classes="h" Text="1 · Wrestler" />
             <TextBlock Grid.Column="2" x:Name="CountText" Classes="faint" Text="nothing loaded" VerticalAlignment="Center" />
           </Grid>
-          <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" Margin="0,12,0,8">
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" Margin="0,11,0,8">
             <ToggleButton x:Name="Src2K" Content="WWE 2K19 - 2K26" IsChecked="True" Classes="chip" />
             <ToggleButton x:Name="SrcAEW" Content="AEW Fight Forever" Classes="chip" />
           </StackPanel>
-          <Grid Grid.Row="2" ColumnDefinitions="*,6,Auto,6,Auto,6,Auto" Margin="0,0,0,8">
+          <Grid Grid.Row="2" ColumnDefinitions="*,6,Auto,6,Auto" Margin="0,0,0,6">
             <TextBox x:Name="SourceBox" Watermark="Folder with the 2K wrestlers" />
             <Button Grid.Column="2" x:Name="SourceBrowse" Content="…" ToolTip.Tip="Choose a folder: a 2K game, a mods folder or one wrestler's folder" />
-            <Button Grid.Column="4" x:Name="OpenModelButton" Content="Model folder…"
-                    ToolTip.Tip="Open a model folder: one wrestler's folder (with BaseModel and its attire), or a folder of 2K mods / chNNNNN.pac packs - it opens at once" />
-            <Button Grid.Column="6" x:Name="LoadButton" Content="Load" />
+            <Button Grid.Column="4" x:Name="LoadButton" Content="Load" Classes="accent" />
           </Grid>
-          <TextBox Grid.Row="3" x:Name="SearchBox" Watermark="Find a wrestler" Margin="0,0,0,10" />
+          <Grid Grid.Row="3" ColumnDefinitions="*,6,Auto" Margin="0,0,0,10">
+            <TextBox x:Name="SearchBox" Watermark="Find a wrestler" />
+            <Button Grid.Column="2" x:Name="OpenModelButton" Content="Model folder…"
+                    ToolTip.Tip="Open a model folder: one wrestler's folder (with BaseModel and its attire), or a folder of 2K mods / chNNNNN.pac packs - it opens at once" />
+          </Grid>
           <ListBox Grid.Row="4" x:Name="WrestlerList" Classes="rows">
             <ListBox.ItemTemplate>
               <DataTemplate>
@@ -72,24 +88,24 @@
       </Border>
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
 
-      <!-- centre: the preview of the built model and the source meshes -->
-      <Grid Grid.Column="2" RowDefinitions="*,10,270">
+      <!-- ============================================================ centre: the picture, then pieces / report -->
+      <Grid Grid.Column="2" RowDefinitions="*,8,250">
         <Border Classes="panel" ClipToBounds="True">
           <Grid>
-            <Image x:Name="PreviewImage" Stretch="Uniform" Margin="10" />
-            <StackPanel x:Name="PreviewEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-              <c:LogoMark Width="72" Height="72" Opacity="0.55" />
-              <TextBlock Classes="sub" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="380"
-                         Text="Choose a wrestler, then Port. The preview shows the built SvR model - the file the game will load." />
+            <Image x:Name="PreviewImage" Stretch="Uniform" Margin="8" />
+            <StackPanel x:Name="PreviewEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+              <c:LogoMark Width="72" Height="72" Opacity="0.5" />
+              <TextBlock Classes="sub" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="400"
+                         Text="Pick a wrestler on the left. You can look at the model in 3D before you port it, and untick anything you do not want." />
             </StackPanel>
-            <StackPanel Margin="16,12" HorizontalAlignment="Left" VerticalAlignment="Top" Spacing="2">
-              <TextBlock Classes="faint" Text="PREVIEW" FontWeight="SemiBold" />
+            <StackPanel Margin="16,12" HorizontalAlignment="Left" VerticalAlignment="Top" Spacing="1">
+              <TextBlock Classes="faint" Text="PREVIEW" FontWeight="SemiBold" FontSize="10" />
               <TextBlock x:Name="PreviewTitle" FontWeight="SemiBold" Foreground="{StaticResource AccentHi}" />
             </StackPanel>
-            <!-- the built model in 3D: turned with the mouse like Blender (the user's request 2026-11-12) -->
-            <Button x:Name="View3DButton" Content="3D view" IsEnabled="False" Margin="16,12" Padding="14,6"
+            <!-- the model in 3D, turned with the mouse like Blender (2026-11-12); the 2K model as well as the port (2026-11-18) -->
+            <Button x:Name="View3DButton" Content="3D view" IsEnabled="False" Margin="16,12" Padding="16,7"
                     HorizontalAlignment="Right" VerticalAlignment="Bottom" Classes="accent"
-                    ToolTip.Tip="Open the built model in 3D: turn it with the mouse, zoom in close, see it from any side (like Blender)" />
+                    ToolTip.Tip="Turn the model with the mouse, zoom in close, see it from any side (like Blender).&#x0a;It works before porting too: it opens the 2K / mod model, and once you have ported, the window&apos;s &quot;2K model&quot; button switches between the two." />
             <!-- the two outfits: what he wears in the ring, what he walks out in (each with its own meshes and picture) -->
             <StackPanel x:Name="OutfitBar" Margin="16,12" HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal" Spacing="6" IsVisible="False">
               <ToggleButton x:Name="OutfitRing" Content="Ring attire" IsChecked="True" Classes="chip"
@@ -99,164 +115,228 @@
             </StackPanel>
           </Grid>
         </Border>
-        <Border Grid.Row="2" Classes="panel" Padding="14">
-          <Grid RowDefinitions="Auto,*">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-              <Border Classes="bar" />
-              <TextBlock Grid.Column="1" Classes="h" x:Name="MeshHeader" Text="Meshes" />
-              <TextBlock Grid.Column="2" x:Name="MeshCount" Classes="faint" VerticalAlignment="Center" />
-              <Button Grid.Column="3" x:Name="SourcePreviewButton" Content="Update preview" IsEnabled="False" Margin="10,0,0,0"
-                      Padding="10,3" FontSize="12" ToolTip.Tip="Draw the source model again without the unticked pieces (before porting)" />
-            </Grid>
-            <ListBox Grid.Row="1" x:Name="MeshList" Classes="rows" Margin="0,10,0,0">
-              <ListBox.ItemTemplate>
-                <DataTemplate>
-                  <Border Classes="row">
-                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
-                      <CheckBox IsChecked="{Binding Keep, Mode=TwoWay}" IsEnabled="{Binding CanRemove}" MinWidth="0" Margin="0,0,8,0"
-                                ToolTip.Tip="{Binding TickTip}" />
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding Name}" FontSize="10" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis" />
-                      </StackPanel>
-                      <TextBlock Grid.Column="2" Classes="mono" Text="{Binding Detail}" Margin="10,0" VerticalAlignment="Center" />
-                      <Border Grid.Column="3" Classes="pill" VerticalAlignment="Center"><TextBlock Text="{Binding Kind}" FontSize="10" Foreground="{StaticResource Dim}" /></Border>
-                      <Button Grid.Column="4" Content="Show" Tag="{Binding Name}" Click="OnShowMesh" Padding="8,2" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center"
-                              ToolTip.Tip="Draw the model with this piece in orange, to see which one it is" />
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-          </Grid>
+
+        <!-- the pieces and the port report share the space under the picture -->
+        <Border Grid.Row="2" Classes="panel" Padding="0">
+          <TabControl Classes="flat">
+            <TabItem>
+              <TabItem.Header>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <TextBlock x:Name="MeshHeader" Text="Meshes" />
+                  <TextBlock x:Name="MeshCount" Classes="faint" VerticalAlignment="Center" FontSize="11" />
+                </StackPanel>
+              </TabItem.Header>
+              <Grid RowDefinitions="Auto,*" Margin="13,4,13,12">
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                  <Button x:Name="SourcePreviewButton" Content="Update preview" IsEnabled="False" Padding="10,3" FontSize="12"
+                          ToolTip.Tip="Draw the source model again without the unticked pieces. You do not normally need this - the picture follows your ticks by itself." />
+                  <TextBlock Classes="faint" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                             Text="Untick what you do not want. Click a row to light that piece up in orange." />
+                </StackPanel>
+                <ListBox Grid.Row="1" x:Name="MeshList" Classes="rows">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate>
+                      <Border Classes="row">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+                          <CheckBox IsChecked="{Binding Keep, Mode=TwoWay}" IsEnabled="{Binding CanRemove}" MinWidth="0" Margin="0,0,8,0"
+                                    ToolTip.Tip="{Binding TickTip}" />
+                          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding SubText}" FontSize="10" Foreground="{StaticResource Dim}" TextTrimming="CharacterEllipsis" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="2" Classes="mono" Text="{Binding Detail}" Margin="10,0" VerticalAlignment="Center" />
+                          <Border Grid.Column="3" Classes="pill" VerticalAlignment="Center"><TextBlock Text="{Binding Kind}" FontSize="10" Foreground="{StaticResource Dim}" /></Border>
+                          <Button Grid.Column="4" Content="Show" Tag="{Binding Name}" Click="OnShowMesh" Padding="8,2" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center"
+                                  ToolTip.Tip="Draw the model with this piece in orange, to see which one it is" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </Grid>
+            </TabItem>
+            <TabItem Header="Port report">
+              <ScrollViewer Margin="13,4,13,12">
+                <TextBlock x:Name="ReportText" Classes="mono" TextWrapping="Wrap"
+                           Text="The port report shows here: what was left out, the memory pages used, the HD textures, and the one file to share." />
+              </ScrollViewer>
+            </TabItem>
+          </TabControl>
         </Border>
       </Grid>
       <GridSplitter Grid.Column="3" ResizeDirection="Columns" />
 
-      <!-- right: the port settings, the report -->
-      <Border Grid.Column="4" Classes="panel" Padding="14">
-        <!-- (the choices scroll: on a 1366x768 screen the Port button fell off the bottom - user report 2026-11-14) -->
-        <Grid RowDefinitions="Auto,*,Auto,Auto,Auto">
+      <!-- ============================================================ right: the settings, then the actions -->
+      <Border Grid.Column="4" Classes="panel" Padding="13">
+        <Grid RowDefinitions="Auto,*,Auto">
           <Grid ColumnDefinitions="Auto,*">
             <Border Classes="bar" />
-            <TextBlock Grid.Column="1" Classes="h" Text="Port" />
+            <TextBlock Grid.Column="1" Classes="h" Text="2 · Settings" />
           </Grid>
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <StackPanel Spacing="10" Margin="0,12,8,10">
-            <TextBlock x:Name="ChosenText" Classes="sub" TextWrapping="Wrap" Text="No wrestler chosen." />
-            <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="Attire" />
-              <ComboBox x:Name="AttireBox" HorizontalAlignment="Stretch" />
+
+          <!-- (the choices scroll: on a 1366x768 screen the Port button fell off the bottom - user report 2026-11-14) -->
+          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,10,6,0">
+            <StackPanel Spacing="6">
+
+              <Border Classes="well" Padding="10,8">
+                <TextBlock x:Name="ChosenText" Classes="sub" TextWrapping="Wrap" Text="No wrestler chosen." />
+              </Border>
+
+              <Expander Classes="grp" IsExpanded="True" Header="Attire">
+                <StackPanel Spacing="9">
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Attire" />
+                    <ComboBox x:Name="AttireBox" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Entrance outfit" />
+                    <ComboBox x:Name="EntranceBox" HorizontalAlignment="Stretch"
+                              ToolTip.Tip="SvR 2011 can show a wrestler in one outfit for the entrance and another in the ring (as the game does for Undertaker, CM Punk, John Cena).&#x0a;The ring attire is the attire above with the meshes you ticked; the entrance outfit is a second model worn only for the entrance:&#x0a;the same attire with all its gear (a coat or hood you unticked for the ring), or another attire." />
+                  </StackPanel>
+                </StackPanel>
+              </Expander>
+
+              <Expander Classes="grp" IsExpanded="True" Header="Body and size">
+                <StackPanel Spacing="9">
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Body" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <ToggleButton x:Name="MaleChip" Content="Male" IsChecked="True" Classes="chip" />
+                      <ToggleButton x:Name="FemaleChip" Content="Female" Classes="chip" ToolTip.Tip="Uses a stock SvR female body as the template (breast bones l_boin / r_boin)" />
+                    </StackPanel>
+                  </StackPanel>
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Body type / fighting style" />
+                    <ComboBox x:Name="StyleBox" HorizontalAlignment="Stretch" MaxDropDownHeight="420"
+                              ToolTip.Tip="The game's own superstar underneath the port: his moves, entrance, stats and his size in the game (the Divas: also the women's body the model is shaped to).&#x0a;Big Show (the old PortIT default) makes everyone a giant. Change the moves later in the Mod Maker if you like." />
+                  </StackPanel>
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Height" />
+                    <Grid ColumnDefinitions="*,8,Auto">
+                      <NumericUpDown x:Name="HeightCmBox" Grid.Column="0" Minimum="120" Maximum="250" Increment="1" Value="180" FormatString="0" HorizontalAlignment="Stretch"
+                                     ToolTip.Tip="How tall the wrestler stands in the game, in centimetres." />
+                      <!-- (no spinner buttons: with them the boxes were too narrow and 11 inches showed as "1") -->
+                      <Grid x:Name="HeightFtPanel" Grid.Column="0" ColumnDefinitions="*,4,Auto,10,*,4,Auto" IsVisible="False">
+                        <NumericUpDown x:Name="HeightFtBox" Grid.Column="0" Minimum="3" Maximum="8" Increment="1" Value="5" FormatString="0" ShowButtonSpinner="False" />
+                        <TextBlock Grid.Column="2" Classes="faint" Text="ft" VerticalAlignment="Center" />
+                        <NumericUpDown x:Name="HeightInBox" Grid.Column="4" Minimum="0" Maximum="11" Increment="1" Value="11" FormatString="0" ShowButtonSpinner="False" />
+                        <TextBlock Grid.Column="6" Classes="faint" Text="in" VerticalAlignment="Center" />
+                      </Grid>
+                      <ComboBox x:Name="HeightUnitBox" Grid.Column="2" Width="104" />
+                    </Grid>
+                    <TextBlock x:Name="HeightHint" Classes="faint" Text="" TextWrapping="Wrap" />
+                  </StackPanel>
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Weight" />
+                    <Grid ColumnDefinitions="*,8,Auto">
+                      <NumericUpDown x:Name="WeightBox" Grid.Column="0" Minimum="30" Maximum="300" Increment="1" Value="100" FormatString="0" HorizontalAlignment="Stretch"
+                                     ToolTip.Tip="SvR 2011 keeps no weight number. It only has a weight class (normal, heavyweight, super heavyweight), which comes from the body type - PortIT checks your weight against it." />
+                      <ComboBox x:Name="WeightUnitBox" Grid.Column="2" Width="104" />
+                    </Grid>
+                    <TextBlock x:Name="WeightHint" Classes="faint" Text="" TextWrapping="Wrap" />
+                  </StackPanel>
+                </StackPanel>
+              </Expander>
+
+              <Expander Classes="grp" IsExpanded="True" Header="Mod name and folder">
+                <StackPanel Spacing="9">
+                  <Grid ColumnDefinitions="*,8,*">
+                    <StackPanel Spacing="3">
+                      <TextBlock Classes="label" Text="Mod id" />
+                      <TextBox x:Name="ModIdBox" Watermark="e.g. bron_breakker" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="3">
+                      <TextBlock Classes="label" Text="Name in game" />
+                      <TextBox x:Name="ModNameBox" Watermark="e.g. Bron Breakker" />
+                    </StackPanel>
+                  </Grid>
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Output folder" />
+                    <Grid ColumnDefinitions="*,6,Auto">
+                      <TextBox x:Name="OutBox" />
+                      <Button Grid.Column="2" x:Name="OutBrowse" Content="…" />
+                    </Grid>
+                  </StackPanel>
+                </StackPanel>
+              </Expander>
+
+              <!-- the groups below start closed: good defaults, open them when you want to change something -->
+              <Expander Classes="grp" Header="How it looks in game">
+                <StackPanel Spacing="9">
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Skin shine (sweat)" />
+                    <ComboBox x:Name="SweatBox" HorizontalAlignment="Stretch"
+                              ToolTip.Tip="The wet, oily look the game's own wrestlers have. It is the sweat mask in the skin texture - the game makes it stronger as a match goes on.&#x0a;Turn it in the 3D view to see it before you port." />
+                  </StackPanel>
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Moving hair" />
+                    <ComboBox x:Name="HairBox" HorizontalAlignment="Stretch"
+                              ToolTip.Tip="Long hair, ponytails and braids swing in matches, like the game's own long-haired superstars: PortIT adds hair bones (kami_b chains) and writes the game's hair settings for each one.&#x0a;Gentle = barely moves, Like the game = the settings the game's own superstars use, Loose = swings more.&#x0a;Try it in the 3D view's Hair test first. If a match hangs on loading or crashes, port again with this off and tell us." />
+                  </StackPanel>
+                  <CheckBox x:Name="FaceCheck" Content="Face animation (weights from a stock SvR head)" IsChecked="True" />
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Pose on the select screen" />
+                    <ComboBox x:Name="PoseBox" HorizontalAlignment="Stretch" MaxDropDownHeight="420"
+                              ToolTip.Tip="How the wrestler stands on the select and VS screens (the mod's pose=).&#x0a;The body type's own, or any superstar's pose." />
+                  </StackPanel>
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Moveset" />
+                    <ComboBox x:Name="MovesBox" HorizontalAlignment="Stretch" MaxDropDownHeight="420"
+                              ToolTip.Tip="The moves and taunts: the body type's own, or copied from one of the game's superstars.&#x0a;The body type still sets the size and the entrance. Change single moves later in the Mod Maker." />
+                  </StackPanel>
+                </StackPanel>
+              </Expander>
+
+              <Expander Classes="grp" Header="Detail and texture size">
+                <StackPanel Spacing="9">
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="Model memory" />
+                    <ComboBox x:Name="BudgetBox" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="HD texture size (full detail)" />
+                    <ComboBox x:Name="HdBox" HorizontalAlignment="Stretch"
+                              ToolTip.Tip="The size of the HD texture pack a full-detail port writes: smaller saves disk space, larger is sharper" />
+                  </StackPanel>
+                </StackPanel>
+              </Expander>
+
             </StackPanel>
-            <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="Entrance outfit" />
-              <ComboBox x:Name="EntranceBox" HorizontalAlignment="Stretch"
-                        ToolTip.Tip="SvR 2011 can show a wrestler in one outfit for the entrance and another in the ring (as the game does for Undertaker, CM Punk, John Cena).&#x0a;The ring attire is the attire above with the meshes you ticked; the entrance outfit is a second model worn only for the entrance:&#x0a;the same attire with all its gear (a coat or hood you unticked for the ring), or another attire." />
-            </StackPanel>
-            <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="Body" />
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <ToggleButton x:Name="MaleChip" Content="Male" IsChecked="True" Classes="chip" />
-                <ToggleButton x:Name="FemaleChip" Content="Female" Classes="chip" ToolTip.Tip="Uses a stock SvR female body as the template (breast bones l_boin / r_boin)" />
-              </StackPanel>
-            </StackPanel>
-            <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="Body type / fighting style" />
-              <ComboBox x:Name="StyleBox" HorizontalAlignment="Stretch" MaxDropDownHeight="420"
-                        ToolTip.Tip="The game's own superstar underneath the port: his moves, entrance, stats and his size in the game (the Divas: also the women's body the model is shaped to).&#x0a;Big Show (the old PortIT default) makes everyone a giant. Change the moves later in the Mod Maker if you like." />
-            </StackPanel>
-            <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="Height" />
-              <Grid ColumnDefinitions="*,8,Auto">
-                <NumericUpDown x:Name="HeightCmBox" Grid.Column="0" Minimum="120" Maximum="250" Increment="1" Value="180" FormatString="0" HorizontalAlignment="Stretch"
-                               ToolTip.Tip="How tall the wrestler stands in the game, in centimetres." />
-                <!-- (no spinner buttons: with them the boxes were too narrow and 11 inches showed as "1") -->
-                <Grid x:Name="HeightFtPanel" Grid.Column="0" ColumnDefinitions="*,4,Auto,10,*,4,Auto" IsVisible="False">
-                  <NumericUpDown x:Name="HeightFtBox" Grid.Column="0" Minimum="3" Maximum="8" Increment="1" Value="5" FormatString="0" ShowButtonSpinner="False" />
-                  <TextBlock Grid.Column="2" Classes="faint" Text="ft" VerticalAlignment="Center" />
-                  <NumericUpDown x:Name="HeightInBox" Grid.Column="4" Minimum="0" Maximum="11" Increment="1" Value="11" FormatString="0" ShowButtonSpinner="False" />
-                  <TextBlock Grid.Column="6" Classes="faint" Text="in" VerticalAlignment="Center" />
-                </Grid>
-                <ComboBox x:Name="HeightUnitBox" Grid.Column="2" Width="104" />
-              </Grid>
-              <TextBlock x:Name="HeightHint" Classes="faint" Text="" TextWrapping="Wrap" />
-            </StackPanel>
-            <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="Weight" />
-              <Grid ColumnDefinitions="*,8,Auto">
-                <NumericUpDown x:Name="WeightBox" Grid.Column="0" Minimum="30" Maximum="300" Increment="1" Value="100" FormatString="0" HorizontalAlignment="Stretch"
-                               ToolTip.Tip="SvR 2011 keeps no weight number. It only has a weight class (normal, heavyweight, super heavyweight), which comes from the body type - PortIT checks your weight against it." />
-                <ComboBox x:Name="WeightUnitBox" Grid.Column="2" Width="104" />
-              </Grid>
-              <TextBlock x:Name="WeightHint" Classes="faint" Text="" TextWrapping="Wrap" />
-            </StackPanel>
-            <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="Moveset" />
-              <ComboBox x:Name="MovesBox" HorizontalAlignment="Stretch" MaxDropDownHeight="420"
-                        ToolTip.Tip="The moves and taunts: the body type's own, or copied from one of the game's superstars.&#x0a;The body type still sets the size and the entrance. Change single moves later in the Mod Maker." />
-            </StackPanel>
-            <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="Pose on the select screen" />
-              <ComboBox x:Name="PoseBox" HorizontalAlignment="Stretch" MaxDropDownHeight="420"
-                        ToolTip.Tip="How the wrestler stands on the select and VS screens (the mod's pose=).&#x0a;The body type's own, or any superstar's pose." />
-            </StackPanel>
-            <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="Model memory" />
-              <ComboBox x:Name="BudgetBox" HorizontalAlignment="Stretch" />
-            </StackPanel>
-            <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="HD texture size (full detail)" />
-              <ComboBox x:Name="HdBox" HorizontalAlignment="Stretch"
-                        ToolTip.Tip="The size of the HD texture pack a full-detail port writes: smaller saves disk space, larger is sharper" />
-            </StackPanel>
-            <CheckBox x:Name="FaceCheck" Content="Face animation (weights from a stock SvR head)" IsChecked="True" />
-            <CheckBox x:Name="HairCheck" Content="Moving hair (test)" IsChecked="False"
-                      ToolTip.Tip="Long hair swings in matches, like the game's own long-haired wrestlers: PortIT adds hair bones (kami_b chains) and the game's hair settings. Try it in the 3D view's Hair test first. New: if a match hangs on loading or crashes, port again with this off and tell us." />
-            <Grid ColumnDefinitions="*,8,*">
-              <StackPanel Spacing="3">
-                <TextBlock Classes="label" Text="Mod id" />
-                <TextBox x:Name="ModIdBox" Watermark="e.g. bron_breakker" />
-              </StackPanel>
-              <StackPanel Grid.Column="2" Spacing="3">
-                <TextBlock Classes="label" Text="Name in game" />
-                <TextBox x:Name="ModNameBox" Watermark="e.g. Bron Breakker" />
-              </StackPanel>
-            </Grid>
-            <StackPanel Spacing="3">
-              <TextBlock Classes="label" Text="Output folder" />
-              <Grid ColumnDefinitions="*,6,Auto">
-                <TextBox x:Name="OutBox" />
-                <Button Grid.Column="2" x:Name="OutBrowse" Content="…" />
-              </Grid>
-            </StackPanel>
-          </StackPanel>
           </ScrollViewer>
+
           <!-- (the buttons stay out of the scroller: the Port button must be on screen whatever the screen size) -->
-          <StackPanel Grid.Row="2" Spacing="8" Margin="0,10,0,0">
-            <Button x:Name="PortButton" Classes="accent" Content="Port to SvR 2011" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False" />
-            <Grid ColumnDefinitions="*,8,*">
+          <StackPanel Grid.Row="2" Spacing="7" Margin="0,12,0,0">
+            <Border Classes="bar2" />
+            <Button x:Name="PortButton" Classes="accent big" Content="Port to SvR 2011" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False" />
+            <Grid ColumnDefinitions="*,7,*">
+              <Button x:Name="PortAllButton" Content="Port every attire" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False"
+                      ToolTip.Tip="Port every attire this wrestler has, one after the other, with the settings above.&#x0a;Each attire becomes its own mod folder." />
+              <Button Grid.Column="2" x:Name="ShareButton" Content="Share this wrestler…" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False"
+                      ToolTip.Tip="Opens the one file to send someone: the zip with the model AND its HD textures." />
+            </Grid>
+            <Grid ColumnDefinitions="*,7,*">
               <Button x:Name="OpenButton" Content="Open folder" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False" />
               <Button Grid.Column="2" x:Name="InstallButton" Content="Install to game…" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False"
                       ToolTip.Tip="Copies the mod into Mods\Superstars of the SvR game folder above (an existing one with the same id is backed up first)" />
             </Grid>
-            <Button x:Name="AttireButton" Content="Install as attire…" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False"
-                    ToolTip.Tip="The port as an attire of a superstar the game has (a new attire, or replacing one) - Mods\Attires, like the Mod Maker's Attires page" />
-            <!-- replace a superstar the game already has, in the game's own pac file (not an attire mod) -->
-            <Button x:Name="ReplaceButton" Content="Replace this superstar in the game…" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False"
-                    ToolTip.Tip="Puts this model over the game's OWN superstar - the one picked as the body type above. They keep their name, stats, moves and entrance, and look new in every attire and every menu.&#x0a;This changes the game's own file (pac\ch\chNNN.pac). The original is backed up first, and PortIT can put it back." />
+            <Grid ColumnDefinitions="*,7,*">
+              <Button x:Name="AttireButton" Content="Install as attire…" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False"
+                      ToolTip.Tip="The port as an attire of a superstar the game has (a new attire, or replacing one) - Mods\Attires, like the Mod Maker's Attires page" />
+              <!-- replace a superstar the game already has, in the game's own pac file (not an attire mod) -->
+              <Button Grid.Column="2" x:Name="ReplaceButton" Content="Replace a superstar…" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False"
+                      ToolTip.Tip="Puts this model over the game's OWN superstar - the one picked as the body type above. They keep their name, stats, moves and entrance, and look new in every attire and every menu.&#x0a;This changes the game's own file (pac\ch\chNNN.pac). The original is backed up first, and PortIT can put it back." />
+            </Grid>
           </StackPanel>
-          <Border Grid.Row="3" Classes="well" MinHeight="100" MaxHeight="240" Margin="0,10,0,0">
-            <ScrollViewer>
-              <TextBlock x:Name="ReportText" Classes="mono" TextWrapping="Wrap" Text="The port report shows here: shine levels, memory pages, what was changed." />
-            </ScrollViewer>
-          </Border>
-          <ProgressBar Grid.Row="4" x:Name="Busy" IsIndeterminate="True" IsVisible="False" Margin="0,10,0,0" Height="4" />
         </Grid>
       </Border>
     </Grid>
 
-    <Border Grid.Row="2" Background="{StaticResource Surface}" Padding="16,7">
-      <TextBlock x:Name="StatusText" Classes="faint" Text="Ready." TextTrimming="CharacterEllipsis" />
+    <!-- ============================================================ status -->
+    <Border Grid.Row="2" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="16,6">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock x:Name="StatusText" Classes="faint" Text="Ready." TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+        <ProgressBar Grid.Column="1" x:Name="Busy" IsIndeterminate="True" IsVisible="False" Width="190" Height="4" VerticalAlignment="Center" Margin="14,0,0,0" />
+      </Grid>
     </Border>
   </Grid>
 </Window>
